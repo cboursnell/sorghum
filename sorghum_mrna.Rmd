@@ -1,0 +1,105 @@
+Sorghum mRNA-seq Analysis
+========================================================
+
+```{r}
+library(ggplot2)
+# load in mrna_raw_data file as a table
+setwd("~/hydrogen/sorghum")
+raw_data <- read.table("raw_mrna_data", sep=",", header=FALSE)
+names(raw_data) <- c("filepath", "rep", "cell", "pair")
+```
+
+```{r raw_read_count, fig.width=12, fig.height=8}
+# plot bar chart of this "mrna_raw_read_counts.txt"
+library(plyr)
+setwd("~/hydrogen/sorghum/mrna")
+raw_read_count <- read.table("mrna_raw_read_counts.txt", sep="\t", header=FALSE)
+names(raw_read_count) <- c("count", "cell", "rep", "pair")
+
+raw_read_count_paired <- ddply(raw_read_count, c("cell", "rep"), transform, sum_count=sum(count))
+raw_read_count_paired <- unique( raw_read_count_paired[,c(2,3,5)] )
+
+ggplot(raw_read_count_paired, aes(x=paste(cell,rep), y=sum_count, fill=cell)) +
+  geom_bar(stat="identity") +
+  ggtitle("Raw read counts") +
+  geom_text(aes(label=sum_count, y=sum_count+500000)) +
+  labs(x = "Cell and rep") +
+  ylim(0,60000000)
+```
+
+
+```{r fig.width=8, fig.height=4}
+# plot quality scores
+setwd("~/hydrogen/sorghum/mrna")
+require("reshape2")
+
+for (i in 1:nrow(raw_data)) {
+  cell = raw_data[i,3]
+  rep = raw_data[i,2]
+  pair = raw_data[i,4]
+  raw_read_qualities <- read.table(paste("raw_read_qualities_",cell,"-",rep,"-",pair,".txt",sep=""), sep="\t", header=FALSE)
+  names(raw_read_qualities) <- c("base","mean","lower","upper","10%", "90%")
+  raw_read_qualities_melt <- melt(raw_read_qualities, id="base")  # convert to long format
+  
+  c<-ggplot(data=raw_read_qualities_melt, aes(x=base, y=value, colour=variable)) +
+      geom_line() + 
+      ggtitle(paste("Raw Read Qualities for ",cell," Rep:",rep, " Pair:",pair)) +
+      ylim(0,42)
+  print(c)
+}
+```
+
+```{r trimmed_read_count, fig.width=12, fig.height=8}
+# plot chart "mrna_trimmed_read_counts.txt"
+library(plyr)
+setwd("~/hydrogen/sorghum/mrna")
+raw_read_count <- read.table("mrna_trimmed_read_counts.txt", sep="\t", header=FALSE)
+names(raw_read_count) <- c("count", "cell", "rep", "pair")
+
+raw_read_count_paired <- ddply(raw_read_count, c("cell", "rep"), transform, sum_count=sum(count))
+raw_read_count_paired <- unique( raw_read_count_paired[,c(2,3,5)] )
+
+ggplot(raw_read_count_paired, aes(x=paste(cell,rep), y=sum_count, fill=cell)) +
+  geom_bar(stat="identity") +
+  ggtitle("Raw read counts") +
+  geom_text(aes(label=sum_count, y=sum_count+500000)) +
+  labs(x = "Cell and rep") +
+  ylim(0,60000000)
+```
+
+
+```{r fig.width=8, fig.height=8}
+# load the tables of trimmed read lengths
+# smoosh together and plot as a bar chart (possibly with log y scale)
+trimmed_read_length <- read.table("t_read_length_BS-1-1.txt", sep="\t", header=FALSE)
+names(trimmed_read_length) <- c("length", "count")
+trimmed_read_length$length <- gsub(trimmed_read_length$length, pattern="([0-9]+)-([0-9]+)", replacement="\\1")
+
+ggplot(trimmed_read_length, aes(x=as.numeric(length), y=count)) +
+  geom_bar(stat="identity") +
+  ggtitle("Trimmed Read Lengths") +
+  labs(x = "Read Length") +
+  ylim(0,2e7)
+```
+
+
+```{r fig.width=8, fig.height=4}
+# plot quality scores
+setwd("~/hydrogen/sorghum/mrna")
+require("reshape2")
+
+for (i in 1:nrow(raw_data)) {
+  cell = raw_data[i,3]
+  rep = raw_data[i,2]
+  pair = raw_data[i,4]
+  raw_read_qualities <- read.table(paste("t_read_qualities_",cell,"-",rep,"-",pair,".txt",sep=""), sep="\t", header=FALSE)
+  names(raw_read_qualities) <- c("base","mean","lower","upper","10%", "90%")
+  raw_read_qualities_melt <- melt(raw_read_qualities, id="base")  # convert to long format
+  
+  c<-ggplot(data=raw_read_qualities_melt, aes(x=base, y=value, colour=variable)) +
+      geom_line() + 
+      ggtitle(paste("Trimmed Read Qualities for ",cell," Rep:",rep, " Pair:",pair)) +
+      ylim(0,42)
+  print(c)
+}
+```

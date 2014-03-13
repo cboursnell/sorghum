@@ -14,22 +14,33 @@ normalise <- function(df) {
 
 ### Raw Data
 
-BS  1	22,932,596  
-BS	2	25,382,876  
-BS	3	19,476,602  
-M	1	16,990,305  
-M	2	21,977,401  
-M	3	21,089,013  
-
 ```{r fig.width=10, fig.height=6}
 setwd("~/hydrogen/sorghum")
-fastq <- read.table("read_lengths.tsv", sep="\t", header=FALSE)
-names(fastq) <- c("cell", "rep", "count") # changing header names
+fastq <- read.table("raw_read_counts.txt", sep="\t", header=FALSE)
+names(fastq) <- c("count", "cell", "rep") # changing header names
 
 ggplot(fastq, aes(x=paste(cell,rep), y=count, fill=cell)) +
   geom_bar(stat="identity") +
   ggtitle("Raw read counts") +
-  labs(x = "Cell and rep")
+  geom_text(aes(label=count, y=count+400000)) +
+  labs(x = "Cell and rep") +
+  ylim(0,30000000)
+
+```
+
+Reads trimmed with trimmomatic
+
+```{r fig.width=10, fig.height=6}
+setwd("~/hydrogen/sorghum")
+fastq <- read.table("t_read_counts.txt", sep="\t", header=FALSE)
+names(fastq) <- c("count", "cell", "rep") # changing header names
+
+ggplot(fastq, aes(x=paste(cell,rep), y=count, fill=cell)) +
+  geom_bar(stat="identity") +
+  ggtitle("Raw read counts") +
+  geom_text(aes(label=count, y=count+400000)) +
+  labs(x = "Cell and rep") +
+  ylim(0,30000000)
 
 ```
 
@@ -37,24 +48,27 @@ Reads trimmed with fastq-mcf
 
 ```{r fig.width=10, fig.height=6}
 setwd("~/hydrogen/sorghum")
-fastq <- read.table("trimmed_read_lengths.tsv", sep="\t", header=FALSE)
-names(fastq) <- c("cell", "rep", "count") # changing header names
+fastq <- read.table("mcf_read_counts.txt", sep="\t", header=FALSE)
+names(fastq) <- c("count", "cell", "rep") # changing header names
 
 ggplot(fastq, aes(x=paste(cell,rep), y=count, fill=cell)) +
   geom_bar(stat="identity") +
-  ggtitle("Trimmed read counts") +
-  labs(x = "Cell and rep")
+  ggtitle("Raw read counts") +
+  geom_text(aes(label=count, y=count+400000)) +
+  labs(x = "Cell and rep") +
+  ylim(0,30000000)
 
 ```
 
-### Read lengths (aligned)
+### Read lengths
 
-Bundle Sheath
+Bundle Sheath (with Trimmomatic)
 
 ```{r fig.width=10, fig.height=6}
+setwd("~/hydrogen/sorghum")
 bs_data <- data.frame()
 for (i in 1:3) {
-  tmp <- read.table(paste("output_BS-",i,"_lengths.txt",sep=""), header=FALSE)
+  tmp <- read.table(paste("t_read_length_BS-",i,".txt",sep=""), header=FALSE)
   names(tmp) <- c("length", "count") # changing header names
   tmp$rep <- paste("rep",i, sep="-")
   tmp <- normalise(tmp)
@@ -64,26 +78,72 @@ for (i in 1:3) {
 ggplot(bs_data, aes(x=length, y=count, colour=rep)) +
   geom_line(size=1) +
   scale_colour_brewer(type="qual", palette=6) +
-  ggtitle("Bundle Sheath sRNA read lengths")
+  ggtitle("Bundle Sheath sRNA read lengths (trimmomatic)") +
+  xlim(17,49)
 
 ```
 
-Mesophyll
+Bundle Sheath (with fastq-mcf)
 
 ```{r fig.width=10, fig.height=6}
-m_data <- data.frame()
+setwd("~/hydrogen/sorghum")
+bs_data <- data.frame()
 for (i in 1:3) {
-  tmp <- read.table(paste("output_M-",i,"_lengths.txt",sep=""), header=FALSE)
-  names(tmp) <- c("length", "count")
+  tmp <- read.table(paste("mcf_read_length_BS-",i,".txt",sep=""), header=FALSE)
+  names(tmp) <- c("length", "count") # changing header names
   tmp$rep <- paste("rep",i, sep="-")
   tmp <- normalise(tmp)
-  m_data <- rbind(m_data,tmp)
+  bs_data <- rbind(bs_data,tmp)
 }
 
-ggplot(m_data, aes(x=length, y=count, colour=rep)) +
+ggplot(bs_data, aes(x=length, y=count, colour=rep)) +
   geom_line(size=1) +
-  scale_colour_brewer(type="qual", palette=6) + 
-  ggtitle("Mesophyll sRNA read lengths")
+  scale_colour_brewer(type="qual", palette=6) +
+  ggtitle("Bundle Sheath sRNA read lengths (fastq-mcf)") +
+  xlim(17,49)
+
+```
+
+
+Mesophyll (with Trimmomatic)
+
+```{r fig.width=10, fig.height=6}
+setwd("~/hydrogen/sorghum")
+bs_data <- data.frame()
+for (i in 1:3) {
+  tmp <- read.table(paste("t_read_length_M-",i,".txt",sep=""), header=FALSE)
+  names(tmp) <- c("length", "count") # changing header names
+  tmp$rep <- paste("rep",i, sep="-")
+  tmp <- normalise(tmp)
+  bs_data <- rbind(bs_data,tmp)
+}
+
+ggplot(bs_data, aes(x=length, y=count, colour=rep)) +
+  geom_line(size=1) +
+  scale_colour_brewer(type="qual", palette=6) +
+  ggtitle("Mesophyll sRNA read lengths (trimmomatic)") +
+  xlim(17,49)
+
+```
+
+Bundle Sheath (with fastq-mcf)
+
+```{r fig.width=10, fig.height=6}
+setwd("~/hydrogen/sorghum")
+bs_data <- data.frame()
+for (i in 1:3) {
+  tmp <- read.table(paste("mcf_read_length_M-",i,".txt",sep=""), header=FALSE)
+  names(tmp) <- c("length", "count") # changing header names
+  tmp$rep <- paste("rep",i, sep="-")
+  tmp <- normalise(tmp)
+  bs_data <- rbind(bs_data,tmp) 
+}
+
+ggplot(bs_data, aes(x=length, y=count, colour=rep)) +
+  geom_line(size=1) +
+  scale_colour_brewer(type="qual", palette=6) +
+  ggtitle("Mesophyll sRNA read lengths (fastq-mcf)") +
+  xlim(17,49)
 
 ```
 
@@ -112,25 +172,25 @@ Mesophyll
 Scatter!
 
 ```{r fig.width=10, fig.height=6}
-bs_1 <- read.table("output_BS-1_counts.txt", header=FALSE)
-bs_2 <- read.table("output_BS-2_counts.txt", header=FALSE)
-bs_3 <- read.table("output_BS-3_counts.txt", header=FALSE)
-mes_1 <- read.table("output_M-1_counts.txt", header=FALSE)
-mes_2 <- read.table("output_M-2_counts.txt", header=FALSE)
-mes_3 <- read.table("output_M-3_counts.txt", header=FALSE)
-names(bs_1) <- c("name", "count")
-names(bs_2) <- c("name", "count")
-names(bs_3) <- c("name", "count")
-names(mes_1) <- c("name", "count")
-names(mes_2) <- c("name", "count")
-names(mes_3) <- c("name", "count")
-
-bs_1 <- normalise(bs_1)
-bs_2 <- normalise(bs_2)
-bs_3 <- normalise(bs_3)
-mes_1 <- normalise(mes_1)
-mes_2 <- normalise(mes_2)
-mes_3 <- normalise(mes_3)
+# bs_1 <- read.table("output_BS-1_counts.txt", header=FALSE)
+# bs_2 <- read.table("output_BS-2_counts.txt", header=FALSE)
+# bs_3 <- read.table("output_BS-3_counts.txt", header=FALSE)
+# mes_1 <- read.table("output_M-1_counts.txt", header=FALSE)
+# mes_2 <- read.table("output_M-2_counts.txt", header=FALSE)
+# mes_3 <- read.table("output_M-3_counts.txt", header=FALSE)
+# names(bs_1) <- c("name", "count")
+# names(bs_2) <- c("name", "count")
+# names(bs_3) <- c("name", "count")
+# names(mes_1) <- c("name", "count")
+# names(mes_2) <- c("name", "count")
+# names(mes_3) <- c("name", "count")
+# 
+# bs_1 <- normalise(bs_1)
+# bs_2 <- normalise(bs_2)
+# bs_3 <- normalise(bs_3)
+# mes_1 <- normalise(mes_1)
+# mes_2 <- normalise(mes_2)
+# mes_3 <- normalise(mes_3)
 ```
 
 Compare Rep 1 and 2 in Bundle Sheath
@@ -169,49 +229,47 @@ Compare Rep 2 and 3 in Bundle Sheath
 Compare Rep 1 and 2 in Mesophyll
 
 ```{r fig.width=10, fig.height=6}
-both <- merge(bs_3, mes_1, by.x = "name", by.y = "name")
-
-names(both) <- c("name", "BS", "M")
-
-ggplot(both, aes(x = log(BS), y = log(M))) + geom_point(size = 0.1) + ggtitle("Bundle Sheath 3 - Mesophyll Rep 1")
-
+# both <- merge(bs_3, mes_1, by.x = "name", by.y = "name")
+# 
+# names(both) <- c("name", "BS", "M")
+# 
+# ggplot(both, aes(x = log(BS), y = log(M))) + geom_point(size = 0.1) + ggtitle("Bundle Sheath 3 - Mesophyll Rep 1")
+# 
 ```
-
 
 Compare Rep 1 of Bundle Sheath and 2 in Mesophyll
 
 ```{r fig.width=10, fig.height=6}
-both <- merge(bs_1, mes_2, by.x = "name", by.y = "name")
-
-names(both) <- c("name", "BS", "M")
-
-ggplot(both, aes(x = log(BS), y = log(M))) + geom_point(size = 0.1) + ggtitle("Bundle Sheath rep 1 and Mesophyll rep 2")
-
+# both <- merge(bs_1, mes_2, by.x = "name", by.y = "name")
+# 
+# names(both) <- c("name", "BS", "M")
+# 
+# ggplot(both, aes(x = log(BS), y = log(M))) + geom_point(size = 0.1) + ggtitle("Bundle Sheath rep 1 and Mesophyll rep 2")
+# 
 ```
-
 
 Correlation Plot
 
 ```{r fig.width=10, fig.height=6}
-library("reshape2")
-
-a <- merge(bs_1, bs_2, by="name")
-bs_all <- merge(a, bs_3, by="name")
-
-b <- merge(mes_1, mes_2, by="name")
-mes_all <- merge(b, mes_3, by="name")
-
-bs_m <- merge(bs_all, mes_all, by="name")
-names(bs_m) <- c("names", "bs_1", "bs_2", "bs_3", "m_1", "m_2", "m_3")
-
-bs_m_c <- cor(bs_m[,2:7])
-
-melted <- melt(bs_m_c)
-
-p <- ggplot(data = melted, aes_string(x = names(melted)[1], y = names(melted)[2], fill = "value")) + 
-  geom_tile() + 
-  geom_text(aes(label = round(value, 4))) + xlab("") + ylab("") +
-  ggtitle("Expression Correlation")
-p
-
+# library("reshape2")
+# 
+# a <- merge(bs_1, bs_2, by="name")
+# bs_all <- merge(a, bs_3, by="name")
+# 
+# b <- merge(mes_1, mes_2, by="name")
+# mes_all <- merge(b, mes_3, by="name")
+# 
+# bs_m <- merge(bs_all, mes_all, by="name")
+# names(bs_m) <- c("names", "bs_1", "bs_2", "bs_3", "m_1", "m_2", "m_3")
+# 
+# bs_m_c <- cor(bs_m[,2:7])
+# 
+# melted <- melt(bs_m_c)
+# 
+# p <- ggplot(data = melted, aes_string(x = names(melted)[1], y = names(melted)[2], fill = "value")) + 
+#   geom_tile() + 
+#   geom_text(aes(label = round(value, 4))) + xlab("") + ylab("") +
+#   ggtitle("Expression Correlation")
+# p
+# 
 ```
