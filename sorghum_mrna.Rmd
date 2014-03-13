@@ -28,7 +28,7 @@ ggplot(raw_read_count_paired, aes(x=paste(cell,rep), y=sum_count, fill=cell)) +
 ```
 
 
-```{r fig.width=8, fig.height=4}
+```{r raw_quality_scores, fig.width=8, fig.height=4}
 # plot quality scores
 setwd("~/hydrogen/sorghum/mrna")
 require("reshape2")
@@ -68,22 +68,31 @@ ggplot(raw_read_count_paired, aes(x=paste(cell,rep), y=sum_count, fill=cell)) +
 ```
 
 
-```{r fig.width=8, fig.height=8}
+```{r trimmed_read_lengths, fig.width=8, fig.height=8}
 # load the tables of trimmed read lengths
 # smoosh together and plot as a bar chart (possibly with log y scale)
-trimmed_read_length <- read.table("t_read_length_BS-1-1.txt", sep="\t", header=FALSE)
-names(trimmed_read_length) <- c("length", "count")
-trimmed_read_length$length <- gsub(trimmed_read_length$length, pattern="([0-9]+)-([0-9]+)", replacement="\\1")
 
-ggplot(trimmed_read_length, aes(x=as.numeric(length), y=count)) +
-  geom_bar(stat="identity") +
-  ggtitle("Trimmed Read Lengths") +
-  labs(x = "Read Length") +
-  ylim(0,2e7)
+setwd("~/hydrogen/sorghum/mrna")
+
+for (i in 1:nrow(raw_data)) {
+  cell = raw_data[i,3]
+  rep = raw_data[i,2]
+  pair = raw_data[i,4]
+  trimmed_read_length <- read.table(paste("t_read_length_",cell,"-",rep,"-",pair,".txt",sep=""), sep="\t", header=FALSE)
+  names(trimmed_read_length) <- c("length", "count")
+  trimmed_read_length$length <- gsub(trimmed_read_length$length, pattern="([0-9]+)-([0-9]+)", replacement="\\1")
+  
+  c<-ggplot(trimmed_read_length, aes(x=as.numeric(length), y=count)) +
+    geom_bar(stat="identity") +
+    ggtitle(paste("Trimmed Read Lengths for ",cell," Rep:",rep, " Pair:",pair)) +
+    labs(x = "Read Length") +
+    ylim(0,2.1e7)
+  print(c)
+}
 ```
 
 
-```{r fig.width=8, fig.height=4}
+```{r trimmed_quality_scores, fig.width=8, fig.height=4}
 # plot quality scores
 setwd("~/hydrogen/sorghum/mrna")
 require("reshape2")
