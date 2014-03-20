@@ -21,7 +21,7 @@ opts = Trollop::options do
   author: Chris Boursnell (cmb211@cam.ac.uk)
   EOS
   opt :input, "Input file describing fastq files", :type => String
-  opt :reference, "Reference fasta file"
+  opt :reference, "Reference fasta file", :required => :true, :type => String
   opt :morehelp, "More help"
   opt :verbose, "Be verbose"
 end
@@ -131,6 +131,8 @@ if !File.exists?("adapter_list.txt")
     `#{minion}`
   end
   File.open("adapter_list.txt", "w") {|io| io.write(adapter_list.join("\n"))}
+else
+  puts "Minion already run"
 end
 
 ## # # # # # # # # # # # # # # # # # #
@@ -148,6 +150,8 @@ if !Dir.exists?("fastqc_output")
   puts "Running fastqc" if opts.verbose
   `mkdir fastqc_output`
   `#{fastqc}`
+else
+  puts "fastqc already run on raw reads"
 end
 
 input.each_with_index do |hash,index|
@@ -179,6 +183,8 @@ if !File.exists?("#{name}") and !File.zero?("#{name}")
       io.write "#{hash[:count]}\t#{hash[:cell]}\t#{hash[:rep]}\n"
     end
   end
+else
+  puts "#{name} already exists"
 end
 
 ## # # # # # # # # # # # # # # # # # #
@@ -204,6 +210,8 @@ if !File.exists?("#{adapter_file}") and !File.zero?("#{adapter_file}")
       end
     end
   end
+else
+  puts "#{adapter_file} already created"
 end
 
 if File.zero?("#{adapter_file}")
@@ -241,7 +249,7 @@ if run_trimmomatic
   # additional bases if the mismatching base is low quality. [http://seqanswers.com/forums/showthread.php?t=11186]
 
   puts "Running Trimmomatic" if opts.verbose
-  input.each do |hash|
+  input.each_with_index do |hash,index|
     infile = hash[:file]
     outfile = "t.#{File.basename(infile)}"
     trim_cmd = "java -jar #{trim_jar} SE #{phred} "                     # phred
@@ -250,9 +258,12 @@ if run_trimmomatic
     trim_cmd += " ILLUMINACLIP:#{adapter_file}:#{seed_mismatches}:#{palindrome_clip_threshold}:#{simple_clip} " 
     trim_cmd += " LEADING:#{leading} TRAILING:#{trailing} SLIDINGWINDOW:#{windowsize}:#{quality} MINLEN:#{minlen} "
     trimmed << outfile
+    input[index][:trimmed_t] = outfile
     if !File.exists?("#{outfile}")
       puts trim_cmd
       `#{trim_cmd}`
+    else
+      puts "#{outfile} already created with trimmomatic"
     end
   end
 end
@@ -260,16 +271,20 @@ end
 # # FASTQ MCF # # # # # # # # # #
 
 puts "Starting fastq-mcf" if opts.verbose
-input.each do |hash|
+input.each_with_index do |hash,index|
   mcf = "fastq-mcf "
   # options
   mcf += " -o mcf.#{File.basename(hash[:file])} "
   mcf += " #{adapter_file}"
   mcf += " #{hash[:file]} "
-  trimmed << "mcf.#{File.basename(hash[:file])}"
-  if !File.exists?("mcf.#{File.basename(hash[:file])}")
+  outfile = "mcf.#{File.basename(hash[:file])}"
+  trimmed << outfile
+  input[index][:trimmed_m] = outfile
+  if !File.exists?("#{outfile}")
     puts mcf
     `#{mcf}` 
+  else
+    puts "#{outfile} already created with fastq-mcf"
   end
 end
 # usage: fastq-mcf [options] <adapters.fa> <reads.fq> [mates1.fq ...] 
@@ -323,6 +338,8 @@ if !Dir.exists?("trimmed_fastqc_output")
   puts "Running fastqc" if opts.verbose
   `mkdir trimmed_fastqc_output`
   `#{fastqc}`
+else
+  puts "fastqc already run on trimmed reads"
 end
 
 t_counts=""
@@ -348,8 +365,8 @@ input.each_with_index do |hash,index|
     end
   end
 end
-File.open("t_read_counts.txt", "w") {|io| io.write(t_counts)}
-File.open("mcf_read_counts.txt", "w") {|io| io.write(mcf_counts)}
+File.open("t_read_counts.txt", "w") {|io| io.write(t_counts)} if !File.exists?("t_read_counts.txt")
+File.open("mcf_read_counts.txt", "w") {|io| io.write(mcf_counts)}  if !File.exists?("mcf_read_counts.txt")
 
 ## # # # # # # # # # # # # # # # # # #
 ## Read lengths after trimming
@@ -358,14 +375,21 @@ File.open("mcf_read_counts.txt", "w") {|io| io.write(mcf_counts)}
 
 input.each_with_index do |hash, index|
   # puts "#{hash[:cell]}\t#{hash[:rep]}"
-  File.open("t_read_length_#{hash[:cell]}-#{hash[:rep]}.txt", "w") do |out|
-    hash[:t_trim].each do |hash2|
-      out.write "#{hash2["Length"]}\t#{hash2["Count"]}\n"
+  name_t = "t_read_length_#{hash[:cell]}-#{hash[:rep]}.txt"
+  if !File.exists?("#{name_t}")
+    File.open("#{name_t}", "w") do |out|
+      hash[:t_trim].each do |hash2|
+        out.write "#{hash2["Length"]}\t#{hash2["Count"]}\n"
+      end
     end
   end
-  File.open("mcf_read_length_#{hash[:cell]}-#{hash[:rep]}.txt", "w") do |out|
-    hash[:mcf_trim].each do |hash2|
-      out.write "#{hash2["Length"]}\t#{hash2["Count"]}\n"
+
+  name_m = "mcf_read_length_#{hash[:cell]}-#{hash[:rep]}.txt"
+  if !File.exists?("#{name_m}")
+    File.open("#{name_m}", "w") do |out|
+      hash[:mcf_trim].each do |hash2|
+        out.write "#{hash2["Length"]}\t#{hash2["Count"]}\n"
+      end
     end
   end
 end
@@ -373,3 +397,78 @@ end
 ## # # # # # # # # # # # # # # # # # #
 ## Run bowtie2 to align the reads to the genome
 ##
+
+index = File.basename(opts.reference).split(".")[0..-2].join(".")
+build = "bowtie-build #{opts.reference} #{index}"
+if !File.exists?("#{index}.1.ebwt")
+  puts build if opts.verbose
+  `#{build}`
+else
+  puts "Index #{index} already exists"
+end
+
+threads = 22
+input.each_with_index do |hash, i|
+  sam = "#{hash[:cell]}-#{hash[:rep]}.sam"
+  bowtie_cmd = "bowtie "
+  bowtie_cmd += " --phred64-quals " # illumina 1.5 == phred64
+  bowtie_cmd += " -v 0 " # exact matches only
+  bowtie_cmd += " --best "
+  bowtie_cmd += " -t -p #{threads} "
+  bowtie_cmd += " #{index} "
+  bowtie_cmd += " #{hash[:trimmed_t]}"
+  bowtie_cmd += " #{sam}"
+  input[i][:sam] = sam
+  puts bowtie_cmd if opts.verbose
+  if !File.exists?("#{sam}") 
+    `#{bowtie_cmd}` if !opts.test
+  else
+    puts "bowtie already run for #{sam}"
+  end
+end
+
+## # # # # # # # # # # # # # # # # # #
+## get size of sam files
+## how many reads aligned to the genome
+##
+
+puts "calculating sizes of sam files" if opts.verbose
+if !File.exists?("sam_sizes.txt")
+  File.open("sam_sizes.txt", "w") do |io|
+    input.each do |hash|
+      sam = hash[:sam]
+      wordcount = "wc -l #{sam}"
+      output = `#{wordcount}`
+      puts "output: #{output}" if opts.verbose
+      l = output.split.first.to_i
+      io.write "#{hash[:cell]}\t#{hash[:rep]}\t#{l}\n"
+    end
+  end
+end
+
+## # # # # # # # # # # # # # # # # # #
+## sort the sam files
+##
+input.each do |hash|
+  sorted_sam = "#{hash[:sam].split(".")[0..-2].join(".")}.sort.sam"
+  sort = "sort -k3,3 -k4,4n #{hash[:sam]} > #{sorted_sam}"
+  if !File.exists?("#{sorted_sam}")
+    puts sort if opts.verbose
+    `#{sort}` if !opts.test
+  else
+    puts "#{hash[:sam]} already sorted"
+  end
+end
+
+## # # # # # # # # # # # # # # # # # #
+## Find loci
+##
+sam_files = ""
+input.each do |hash|
+  sam_files << "#{hash[:sam]} "
+end
+loci = "ruby find_loci2.rb --input #{sam_files} --output srna_expression.txt"
+puts loci if opts.verbose
+if !File.exists?("srna_expression.txt")
+  `#{loci}` if !opts.test
+end

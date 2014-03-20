@@ -52,14 +52,14 @@ for (i in 1:nrow(raw_data)) {
 ```{r trimmed_read_count, fig.width=12, fig.height=8}
 # plot chart "mrna_trimmed_read_counts.txt"
 library(plyr)
-setwd("~/hydrogen/sorghum/mrna")
-raw_read_count <- read.table("mrna_trimmed_read_counts.txt", sep="\t", header=FALSE)
-names(raw_read_count) <- c("count", "cell", "rep", "pair")
+setwd("~/hydrogen/sorghum/mrna") # mrna_trimmed_read_counts.txt
+trimmed_read_count <- read.table("mrna_trimmed_read_counts.txt", sep="\t", header=FALSE)
+names(trimmed_read_count) <- c("count", "cell", "rep", "pair")
 
-raw_read_count_paired <- ddply(raw_read_count, c("cell", "rep"), transform, sum_count=sum(count))
-raw_read_count_paired <- unique( raw_read_count_paired[,c(2,3,5)] )
+trimmed_read_count_paired <- ddply(trimmed_read_count, c("cell", "rep"), transform, sum_count=sum(count))
+trimmed_read_count_paired <- unique( trimmed_read_count_paired[,c(2,3,5)] )
 
-ggplot(raw_read_count_paired, aes(x=paste(cell,rep), y=sum_count, fill=cell)) +
+ggplot(trimmed_read_count_paired, aes(x=paste(cell,rep), y=sum_count, fill=cell)) +
   geom_bar(stat="identity") +
   ggtitle("Raw read counts") +
   geom_text(aes(label=sum_count, y=sum_count+500000)) +
@@ -112,3 +112,78 @@ for (i in 1:nrow(raw_data)) {
   print(c)
 }
 ```
+
+
+```{r, fig.width=12, fig.height=12}
+# load express outputs
+
+library(reshape2)
+library(ggplot2)
+setwd("~/hydrogen/sorghum/mrna")
+cells = c("BS", "M")
+reps = c(1,2,3)
+data <- data.frame()
+
+for (i in cells) {
+  for (j in reps) {
+    file <- paste("express_", i, "-", j, "/results.xprs",sep="")
+    print(file)
+    tmp <- read.table(file, header=T)
+    tmp <- tmp[,c(2,15)] # only keep contig name and tpm column
+    tmp$sample <- paste(i,"-",j,sep="")
+    data <- rbind(data, tmp)
+  }
+}
+b <- dcast(data, target_id ~ sample, value.var="tpm")
+
+write.table(b, file="sorghum_mrna.by_transcript.tpm.csv", sep=",", row.names=FALSE)
+
+row.names(b) <- b$target_id
+b<-b[,-c(1)]
+correlation <- cor(b)
+melted <- melt(correlation)
+ggplot(data=melted, aes_string(x=names(melted)[1], y=names(melted)[2], fill="value")) +
+  geom_tile() +
+  ggtitle("TPM Correlation Matrix") +
+  geom_text(aes(label = round(value, 2))) +
+  xlab('') +
+  ylab('')
+```
+
+
+```{r, fig.width=12, fig.height=12}
+# load express outputs
+
+library(reshape2)
+library(ggplot2)
+setwd("~/hydrogen/sorghum/mrna")
+cells = c("BS", "M")
+reps = c(1,2,3)
+data <- data.frame()
+
+for (i in cells) {
+  for (j in reps) {
+    file <- paste("express_", i, "-", j, "/results.xprs",sep="")
+    print(file)
+    tmp <- read.table(file, header=T)
+    tmp <- tmp[,c(2,8)]
+    tmp$sample <- paste(i,"-",j,sep="")
+    data <- rbind(data, tmp)
+  }
+}
+b <- dcast(data, target_id ~ sample, value.var="eff_counts")
+
+write.table(b, file="sorghum_mrna.by_transcript.eff_counts.csv", sep=",", row.names=FALSE)
+
+row.names(b) <- b$target_id
+b<-b[,-c(1)]
+correlation <- cor(b)
+melted <- melt(correlation)
+ggplot(data=melted, aes_string(x=names(melted)[1], y=names(melted)[2], fill="value")) +
+  geom_tile() +
+  ggtitle("Effective Count Correlation Matrix") +
+  geom_text(aes(label = round(value, 2))) +
+  xlab('') +
+  ylab('')
+```
+

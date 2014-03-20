@@ -20,12 +20,16 @@ opts = Trollop::options do
   EOS
   opt :input, "Input file describing fastq files", :required => true, :type => String
   opt :reference, "Reference fasta file", :required => true, :type => String
+  opt :genome, "Reference is a genome"
+  opt :transcriptome, "Reference is a transcriptome"
+  opt :threads, "Number of threads", :default => 22, :type => :int
   opt :morehelp, "More help"
   opt :verbose, "Be verbose"
+  opt :test, "Don't actually run anything"
 end
 
 Trollop::die :input, "must exist" if !File.exist?(opts[:input]) if (opts[:input] or !opts[:morehelp])
-
+Trollop::die "Please specify either --genome or --transcriptome" if (!opts.genome and !opts.transcriptome)
 
 def parse_fastqc_data(path) #rds
   data = {}
@@ -121,7 +125,7 @@ if !Dir.exists?("#{output_dir}")
   puts fastqc
   puts "Running fastqc" if opts.verbose
   `mkdir #{output_dir}`
-  `#{fastqc}` 
+  `#{fastqc}`  if !opts.test
 end
 
 ### parse the fastqc output and get information about
@@ -142,11 +146,6 @@ input.each_with_index do |hash,index|
         input[index][:over] << hash2["Sequence"]
       end
     end
-    # >>Per base sequence quality     fail
-    #Base     Mean                  Median  LowerQ  UpperQ 10th Percentile 90th Percentile
-    # 1       32.07519822751335       31.0    31.0    34.0    31.0    34.0
-    # 2       32.31580337517283       34.0    31.0    34.0    31.0    34.0
-
     input[index][:raw_quals] = []
     data["Per base sequence quality"].each do |hash2|
       input[index][:raw_quals] << hash2
@@ -160,7 +159,7 @@ name = "mrna_raw_read_counts.txt"
 if !File.exists?("#{name}") and !File.zero?("#{name}")
   File.open("#{name}", "w") do |io|
     input.each do |hash|
-      io.write "#{hash[:count]}\t#{hash[:cell]}\t#{hash[:rep]}\t#{hash[:pair]}\n"
+      io.write "#{hash[:count]}\t#{hash[:cell]}\t#{hash[:rep]}\t#{hash[:pair]}\n" if !opts.test
     end
   end
 end
@@ -173,7 +172,7 @@ input.each_with_index do |hash, index|
   hash[:raw_quals].each do |hash2|
     text << "#{hash2["Base"].split("-").first.to_i}\t#{hash2["Mean"].to_f}\t#{hash2["Lower Quartile"]}\t#{hash2["Upper Quartile"]}\t#{hash2["10th Percentile"]}\t#{hash2["90th Percentile"]}\n"
   end
-  File.open("#{name}", "w") {|io| io.write(text)}
+  File.open("#{name}", "w") {|io| io.write(text)} if !File.exists?("#{name}") if !opts.test
 end
 
 
@@ -237,7 +236,7 @@ if run_trimmomatic
   elsif input[0][:encoding].match(/Illumina 1.8/)
     phred=" -phred33 "
   end
-  minlen=17
+  minlen=40 # 
   windowsize=4
   quality=15
   trailing=15
@@ -270,7 +269,9 @@ if run_trimmomatic
     input[j][:unpaired] = outfileU_right
     if !File.exists?("#{outfile_left}")
       puts trim_cmd if opts.verbose
-      `#{trim_cmd}`
+      # `#{trim_cmd}`
+    else
+      puts "trimmomatic already run"
     end
   end
 end
@@ -292,6 +293,8 @@ if !Dir.exists?("#{output_dir}")
   puts "Running fastqc" if opts.verbose
   `mkdir #{output_dir}`
   `#{fastqc}`
+else
+  puts "fastqc already run on trimmed reads"
 end
 
 ### parse the fastqc output again and get information about
@@ -305,7 +308,7 @@ input.each_with_index do |hash,index|
   if Dir.exists?("#{dir}")
     data = parse_fastqc_data("#{dir}/fastqc_data.txt")
     count = data["Basic Statistics"]["Total Sequences"].to_i
-    t_counts <<  "#{count}\t#{hash[:cell]}\t#{hash[:rep]}\n"
+    t_counts <<  "#{count}\t#{hash[:cell]}\t#{hash[:rep]}\t#{hash[:pair]}\n"
     input[index][:trim] = [] 
     data["Sequence Length Distribution"].each do |hash2|
       input[index][:trim] << hash2
@@ -316,14 +319,20 @@ input.each_with_index do |hash,index|
     end
   end
 end
-File.open("mrna_trimmed_read_counts.txt", "w") {|io| io.write(t_counts)}
+File.open("mrna_trimmed_read_counts.txt", "w") {|io| io.write(t_counts)} if !File.exists?("mrna_trimmed_read_counts.txt") if !opts.test
+
 
 # output trimmed read lengths per file
 input.each_with_index do |hash, index|
-  File.open("t_read_length_#{hash[:cell]}-#{hash[:rep]}-#{hash[:pair]}.txt", "w") do |out|
-    hash[:trim].each do |hash2|
-      out.write "#{hash2["Length"]}\t#{hash2["Count"]}\n"
+  name = "t_read_length_#{hash[:cell]}-#{hash[:rep]}-#{hash[:pair]}.txt"
+  if !File.exists?("#{name}")
+    File.open("#{name}", "w") do |out|
+      hash[:trim].each do |hash2|
+        out.write "#{hash2["Length"]}\t#{hash2["Count"]}\n"
+      end
     end
+  else
+    puts "#{name} already exists"
   end
 end
 
@@ -333,50 +342,90 @@ input.each_with_index do |hash, index|
   name = "t_read_qualities_#{hash[:cell]}-#{hash[:rep]}-#{hash[:pair]}.txt"
   text=""
   hash[:t_quals].each do |hash2|
-    text << "#{hash2["Base"].split("-").first.to_i}\t#{hash2["Mean"].to_f}\t#{hash2["Lower Quartile"]}\t#{hash2["Upper Quartile"]}\t#{hash2["10th Percentile"]}\t#{hash2["90th Percentile"]}\n"
+    text << "#{hash2["Base"].split("-").first.to_i}\t#{hash2["Mean"].to_f}\t#{hash2["Lower Quartile"]}"
+    text << "\t#{hash2["Upper Quartile"]}\t#{hash2["10th Percentile"]}\t#{hash2["90th Percentile"]}\n"
   end
-  File.open("#{name}", "w") {|io| io.write(text)}
+  File.open("#{name}", "w") {|io| io.write(text)} if !File.exists?("#{name}")
 end
 
-
+reference = opts.reference
+if opts.genome
+  # if the reference is a genome then build a transcriptome
+  # using tophat and cufflinks
+  left = []
+  right = []
+  input.each do |hash|
+    if hash[:pair]=="1"
+      left << hash[:trimmed]
+    elsif hash[:pair]=="2"
+      right << hash[:trimmed]
+    end
+  end
+  cmd = "ruby /home/cmb211/scripts/sorghum/tophat.rb --left #{left.join(",")} --right #{right.join(",")} --genome #{opts.reference} "
+  cmd += " --outputdir transcriptome --threads #{opts.threads} --verbose "
+  puts "Building transcriptome from mRNAseq reads and genome" if opts.verbose
+  puts " using Tophat and Cufflinks" if opts.verbose
+  reference = "transcriptome/#{File.basename(opts.reference).split(".").first}-transcripts.fa"
+  puts cmd if opts.verbose
+  if !File.exists?("#{reference}")
+    `#{cmd}` if !opts.test
+  end
+  puts "reference = #{reference}"
+end
 
 ### align the trimmed mrna reads to the sorghum transcriptome
 ###   --met-file <path>  send metrics to file at <path> (off)
 ###   does the metrics output file contain information on number of reads aligned etc?
 ###   if it does put this into a plot in R
 
-# bowtie2-build index of genome
-index = "#{File.basename(opts.reference)}"
+# bowtie2-build index
+index = "#{File.basename(reference).split(".")[0..-2].join(".")}" 
+# index = reference
+
 if !File.exists?("#{index}.1.bt2")
-  build = "bowtie2-build #{opts.reference} #{index}"
+  build = "bowtie2-build #{reference} #{index}"
   puts build if opts.verbose
-  `#{build}`
+  `#{build}`  if !opts.test
 end
 
-#bowtie2 align reads togenome
-threads = 22
+#bowtie2 align reads to transcriptome
 count=0
 # input.each_slice(2) do |slice|
 input.each_with_index.each_slice(2) do |(a,i), (b,j)|
   sam = "#{a[:cell]}_#{a[:rep]}.sam"
-  bowtie = "bowtie2 -t -p #{threads} --met-file met_file_#{count} --very-sensitive "
+  bowtie = "bowtie2 -t -p #{opts.threads} --met-file met_file_#{count} --very-sensitive "
   # bowtie += " -a " # if this makes the memory go too large switch to -k 500
   bowtie += " -k 500 "
   bowtie += " -x #{index} "
   bowtie += " -1 #{a[:trimmed]} "
   bowtie += " -2 #{b[:trimmed]} "
   bowtie += " -U #{a[:unpaired]},#{b[:unpaired]}"
-  bowtie += " -S #{sam}"
+  bowtie += " -S transcriptome/#{sam}"
   puts bowtie if opts.verbose
   count+=1
-  if !File.exists?("#{sam}")
-    `#{bowtie}`
-    input[i][:sam] = sam
-    input[j][:sam] = sam
+  if !File.exists?("transcriptome/#{sam}")
+    `#{bowtie}` if !opts.test
   end
+  input[i][:sam] = sam
+  input[j][:sam] = sam
 end
 
 ### run expression quantification on the output sam files
 
-# rsem for genomes?
+input.each_with_index.each_slice(2) do |(a,i),(b,j)|
+  out_dir = "express_#{a[:cell]}-#{a[:rep]}"
+  sam = "#{a[:sam]}"
+  if !File.exists?("#{out_dir}/results.xprs") # if the eXpress output doesn't exist run eXpress
+    express_cmd = "express --output-align-prob "
+    express_cmd << " -o #{out_dir} "
+    express_cmd << " --no-update-check "   
+    express_cmd << " -B 2 " 
+    express_cmd << " #{reference} " # fasta file to align reads to
+    express_cmd << " transcriptome/#{sam}"
+    puts express_cmd if opts.verbose
+    if !Dir.exists?("#{out_dir}")
+      `#{express_cmd}` if !opts.test
+    end
+  end
+end
 
