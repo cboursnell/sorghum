@@ -114,7 +114,7 @@ for (i in 1:nrow(raw_data)) {
 ```
 
 
-```{r, fig.width=12, fig.height=12}
+```{r tpm_corr, fig.width=12, fig.height=12}
 # load express outputs
 
 library(reshape2)
@@ -126,7 +126,7 @@ data <- data.frame()
 
 for (i in cells) {
   for (j in reps) {
-    file <- paste("express_", i, "-", j, "/results.xprs",sep="")
+    file <- paste("cufflinks_express/express_", i, "-", j, "/results.xprs",sep="")
     print(file)
     tmp <- read.table(file, header=T)
     tmp <- tmp[,c(2,15)] # only keep contig name and tpm column
@@ -134,13 +134,13 @@ for (i in cells) {
     data <- rbind(data, tmp)
   }
 }
-b <- dcast(data, target_id ~ sample, value.var="tpm")
+tpm_data <- dcast(data, target_id ~ sample, value.var="tpm")
 
-write.table(b, file="sorghum_mrna.by_transcript.tpm.csv", sep=",", row.names=FALSE)
+write.table(tpm_data, file="sorghum_mrna.by_transcript.tpm.csv", sep="\t", row.names=FALSE, quote=F)
 
-row.names(b) <- b$target_id
-b<-b[,-c(1)]
-correlation <- cor(b)
+row.names(tpm_data) <- tpm_data$target_id
+tpm_data<-tpm_data[,-c(1)]
+correlation <- cor(tpm_data)
 melted <- melt(correlation)
 ggplot(data=melted, aes_string(x=names(melted)[1], y=names(melted)[2], fill="value")) +
   geom_tile() +
@@ -151,7 +151,7 @@ ggplot(data=melted, aes_string(x=names(melted)[1], y=names(melted)[2], fill="val
 ```
 
 
-```{r, fig.width=12, fig.height=12}
+```{r eff_count_corr, fig.width=12, fig.height=12}
 # load express outputs
 
 library(reshape2)
@@ -164,20 +164,20 @@ data <- data.frame()
 for (i in cells) {
   for (j in reps) {
     file <- paste("express_", i, "-", j, "/results.xprs",sep="")
-    print(file)
+    #print(file)
     tmp <- read.table(file, header=T)
     tmp <- tmp[,c(2,8)]
     tmp$sample <- paste(i,"-",j,sep="")
     data <- rbind(data, tmp)
   }
 }
-b <- dcast(data, target_id ~ sample, value.var="eff_counts")
+count_data <- dcast(data, target_id ~ sample, value.var="eff_counts")
 
-write.table(b, file="sorghum_mrna.by_transcript.eff_counts.csv", sep=",", row.names=FALSE)
+write.table(count_data, file="sorghum_mrna.by_transcript.eff_counts.csv", sep="\t", row.names=FALSE, quote=F)
 
-row.names(b) <- b$target_id
-b<-b[,-c(1)]
-correlation <- cor(b)
+row.names(count_data) <- count_data$target_id
+counts<-count_data[,-c(1)]
+correlation <- cor(counts)
 melted <- melt(correlation)
 ggplot(data=melted, aes_string(x=names(melted)[1], y=names(melted)[2], fill="value")) +
   geom_tile() +
@@ -186,4 +186,100 @@ ggplot(data=melted, aes_string(x=names(melted)[1], y=names(melted)[2], fill="val
   xlab('') +
   ylab('')
 ```
+
+Run EBSeq for differential expression analysis on effective count data
+
+```{r ebseq_sorghum}
+setwd("~/hydrogen/sorghum/mrna")
+library(EBSeq)
+# express outputs stored in 'counts' matrix
+
+counts<-counts[-c(rowSums(counts)==0),] # remove rows that are all zeros
+
+mat <- as.matrix(counts)
+
+sizes <- MedianNorm(counts)
+#sizes=QuantileNorm(counts, 0.75) # upper-quantile normalisation
+sizes
+
+conditions <- as.factor(rep(c("BS", "M"),each=3))
+
+ebOut <- EBTest(Data=mat, Conditions=conditions, sizeFactors=sizes, maxround=40)
+
+posteriorProbs <- GetPPMat(ebOut)
+
+#annotations <- read.table(file="sorghum_annotation.txt",header=F,sep="\t")
+#names(annotations) <- c("sorghum_contig", "sorghum")
+probs <- data.frame(posteriorProbs)
+probs$sorghum <- row.names(probs)
+names(probs) <- c("PPEE", "PPDE", "sorghum")
+
+#anno_probs <- merge(probs, annotations, by="sorghum_contig", all.x=T) 
+
+write.table(anno_probs, "ppde_sorghum_mrna.csv", sep="\t",quote=F,row.names=F)
+
+#DEfound=rownames(posteriorProbs)[which(posteriorProbs[,"PPDE"]>=0.95)]
+
+```
+
+MDH
+```{r}
+# checking out a list of key sorghum genes
+# plot bar charts of tpm with standard error bars
+
+library(plyr)
+stderr <- function(vector) {
+  sd(vector)/sqrt(length(vector))
+}
+
+key <- read.table("key_sorghum.txt",header=F, sep="\t")
+names(key) <- c("ID", "desc")
+head(tpm_data)
+pepc <- tpm_data[which(row.names(tpm_data)=="CUFF.25890.2"),] # Sb09g019930.1 CUFF.25890.2 
+pepc_melt <- melt(pepc)
+pepc_melt$cell <- gsub(pepc_melt$variable, pattern="-[0-9]", replacement="")
+  
+tpm <- ddply(pepc_melt, .(cell), numcolwise(mean))        # sum columns, grouping by annotation
+tpm[which(tpm$cell=="BS"),"stderr"]<-stderr(pepc_melt[which(pepc_melt$cell=="BS"),]$value)
+tpm[which(tpm$cell=="M"),"stderr"]<-stderr(pepc_melt[which(pepc_melt$cell=="M"),]$value)
+
+ggplot(data=tpm, aes(x=cell, y=value, fill=cell)) +
+  geom_bar(stat="identity") +
+  ggtitle("Expression of NADPMDH") +
+  #geom_text(aes(label=sum_count, y=sum_count+500000)) +
+  labs(x = "Cell") +
+  geom_errorbar(aes(ymax=value+stderr,ymin=value-stderr))
+
+```
+
+OMT
+```{r}
+# checking out a list of key sorghum genes
+# plot bar charts of tpm with standard error bars
+
+library(plyr)
+stderr <- function(vector) {
+  sd(vector)/sqrt(length(vector))
+}
+
+key <- read.table("key_sorghum.txt",header=F, sep="\t")
+names(key) <- c("ID", "desc")
+head(tpm_data)
+pepc <- tpm_data[which(row.names(tpm_data)=="CUFF.23063.1"),] # Sb09g019930.1 CUFF.25890.2 
+pepc_melt <- melt(pepc)
+pepc_melt$cell <- gsub(pepc_melt$variable, pattern="-[0-9]", replacement="")
+  
+tpm <- ddply(pepc_melt, .(cell), numcolwise(mean))        # sum columns, grouping by annotation
+tpm[which(tpm$cell=="BS"),"stderr"]<-stderr(pepc_melt[which(pepc_melt$cell=="BS"),]$value)
+tpm[which(tpm$cell=="M"),"stderr"]<-stderr(pepc_melt[which(pepc_melt$cell=="M"),]$value)
+
+ggplot(data=tpm, aes(x=cell, y=value, fill=cell)) +
+  geom_bar(stat="identity") +
+  ggtitle("Expression of OMT") +
+  #geom_text(aes(label=sum_count, y=sum_count+500000)) +
+  labs(x = "Cell") +
+  geom_errorbar(aes(ymax=value+stderr,ymin=value-stderr))
+
+```
+
 

@@ -269,7 +269,7 @@ if run_trimmomatic
     input[j][:unpaired] = outfileU_right
     if !File.exists?("#{outfile_left}")
       puts trim_cmd if opts.verbose
-      # `#{trim_cmd}`
+      `#{trim_cmd}` if !opts.test
     else
       puts "trimmomatic already run"
     end
@@ -291,8 +291,8 @@ if !Dir.exists?("#{output_dir}")
   fastqc = "#{fastqc_path} --kmers 7 --threads #{input.length} --outdir #{output_dir} #{files}"
   puts fastqc
   puts "Running fastqc" if opts.verbose
-  `mkdir #{output_dir}`
-  `#{fastqc}`
+  `mkdir #{output_dir}` if !opts.test
+  `#{fastqc}` if !opts.test
 else
   puts "fastqc already run on trimmed reads"
 end
@@ -328,7 +328,7 @@ input.each_with_index do |hash, index|
   if !File.exists?("#{name}")
     File.open("#{name}", "w") do |out|
       hash[:trim].each do |hash2|
-        out.write "#{hash2["Length"]}\t#{hash2["Count"]}\n"
+        out.write "#{hash2["Length"]}\t#{hash2["Count"]}\n" if !opts.test
       end
     end
   else
@@ -345,7 +345,7 @@ input.each_with_index do |hash, index|
     text << "#{hash2["Base"].split("-").first.to_i}\t#{hash2["Mean"].to_f}\t#{hash2["Lower Quartile"]}"
     text << "\t#{hash2["Upper Quartile"]}\t#{hash2["10th Percentile"]}\t#{hash2["90th Percentile"]}\n"
   end
-  File.open("#{name}", "w") {|io| io.write(text)} if !File.exists?("#{name}")
+  File.open("#{name}", "w") {|io| io.write(text)} if !File.exists?("#{name}") if !opts.test
 end
 
 reference = opts.reference
@@ -405,6 +405,8 @@ input.each_with_index.each_slice(2) do |(a,i), (b,j)|
   count+=1
   if !File.exists?("transcriptome/#{sam}")
     `#{bowtie}` if !opts.test
+  else
+    puts "#{sam} already exists" if opts.verbose
   end
   input[i][:sam] = sam
   input[j][:sam] = sam

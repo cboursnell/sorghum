@@ -208,14 +208,14 @@ ggsave("spearman.pdf")
 Density Plot
 
 ```{r density, fig.width=10, fig.height=6}
-count_melt <- melt(counts)
-count_melt$value[count_melt$value < 0.01] <- 0
-count_melt$cell <- gsub(count_melt$variable, pattern="\\-[0-9]", replacement="")
-
-ggplot(count_melt, aes(x=log(value))) +
-  geom_density() +
-  ggtitle("Density plot of sRNA loci expression")
-ggsave("srna_density.pdf")
+# count_melt <- melt(counts)
+# count_melt$value[count_melt$value < 0.01] <- 0
+# count_melt$cell <- gsub(count_melt$variable, pattern="\\-[0-9]", replacement="")
+# 
+# ggplot(count_melt, aes(x=log(value))) +
+#   geom_density() +
+#   ggtitle("Density plot of sRNA loci expression")
+# ggsave("srna_density.pdf")
 
 ```
 
