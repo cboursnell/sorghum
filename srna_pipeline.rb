@@ -225,7 +225,7 @@ end
 trimmed=[]
 run_trimmomatic = true
 if run_trimmomatic 
-  trim_jar = "/applications/trimmomatic/Trimmomatic-0.30/trimmomatic-0.30.jar"
+  trim_jar = "/home/cmb211/apps/Trimmomatic-0.32/trimmomatic-0.32.jar"
   threads = 4
 
   phred=" -phred33 "
