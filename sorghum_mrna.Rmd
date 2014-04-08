@@ -34,8 +34,10 @@ Quality scores of raw data file
 ```{r raw_quality_scores, fig.width=8, fig.height=4}
 # plot quality scores
 setwd("~/hydrogen/sorghum/mrna")
-require("reshape2")
+library(reshape2)
+library(plyr)
 
+sum_read_quals<-data.frame()
 for (i in 1:nrow(raw_data)) {
   cell = raw_data[i,3]
   rep = raw_data[i,2]
@@ -43,13 +45,16 @@ for (i in 1:nrow(raw_data)) {
   raw_read_qualities <- read.table(paste("raw_read_qualities_",cell,"-",rep,"-",pair,".txt",sep=""), sep="\t", header=FALSE)
   names(raw_read_qualities) <- c("base","mean","lower","upper","10%", "90%")
   raw_read_qualities_melt <- melt(raw_read_qualities, id="base")  # convert to long format
-  
-  c<-ggplot(data=raw_read_qualities_melt, aes(x=base, y=value, colour=variable)) +
-      geom_line() + 
-      ggtitle(paste("Raw Read Qualities for ",cell," Rep:",rep, " Pair:",pair)) +
-      ylim(0,42)
-  print(c)
+  raw_read_qualities_melt$sample <- paste(cell,"-",rep,"-",pair,sep="")
+  sum_read_quals <- rbind(sum_read_quals, raw_read_qualities_melt)
 }
+
+mean_read_quals <- ddply(sum_read_quals, .(base,variable), numcolwise(mean))        # sum columns, grouping by annotation
+
+ggplot(data=mean_read_quals, aes(x=base, y=value, colour=variable)) +
+      geom_line() + 
+      ggtitle("Raw Read Qualities ") +
+      ylim(0,42)
 ```
 
 Number of reads in each of the trimmed data files
@@ -80,6 +85,7 @@ Lengths of reads after trimming
 
 setwd("~/hydrogen/sorghum/mrna")
 
+sum_read_lengths <- data.frame()
 for (i in 1:nrow(raw_data)) {
   cell = raw_data[i,3]
   rep = raw_data[i,2]
@@ -87,42 +93,48 @@ for (i in 1:nrow(raw_data)) {
   trimmed_read_length <- read.table(paste("t_read_length_",cell,"-",rep,"-",pair,".txt",sep=""), sep="\t", header=FALSE)
   names(trimmed_read_length) <- c("length", "count")
   trimmed_read_length$length <- gsub(trimmed_read_length$length, pattern="([0-9]+)-([0-9]+)", replacement="\\1")
-  
-  c<-ggplot(trimmed_read_length, aes(x=as.numeric(length), y=count)) +
+  sum_read_lengths <- rbind(sum_read_lengths, trimmed_read_length)
+}
+total_read_lengths <- ddply(sum_read_lengths, .(length), numcolwise(sum))
+
+ggplot(total_read_lengths, aes(x=as.numeric(length), y=count)) +
     geom_bar(stat="identity") +
     ggtitle(paste("Trimmed Read Lengths for ",cell," Rep:",rep, " Pair:",pair)) +
-    labs(x = "Read Length") +
-    ylim(0,2.1e7)
-  print(c)
-}
+    labs(x = "Read Length")
+    
 ```
 
 Quality scores of trimmed data files
 
-```{r trimmed_quality_scores, fig.width=8, fig.height=4}
+```{r trimmed_quality_scores, fig.width=10, fig.height=5}
 # plot quality scores
 setwd("~/hydrogen/sorghum/mrna")
-require("reshape2")
+library(reshape2)
+library(plyr)
 
+
+sum_trimmed_read_quals<-data.frame()
 for (i in 1:nrow(raw_data)) {
   cell = raw_data[i,3]
   rep = raw_data[i,2]
   pair = raw_data[i,4]
-  raw_read_qualities <- read.table(paste("t_read_qualities_",cell,"-",rep,"-",pair,".txt",sep=""), sep="\t", header=FALSE)
-  names(raw_read_qualities) <- c("base","mean","lower","upper","10%", "90%")
-  raw_read_qualities_melt <- melt(raw_read_qualities, id="base")  # convert to long format
-  
-  c<-ggplot(data=raw_read_qualities_melt, aes(x=base, y=value, colour=variable)) +
-      geom_line() + 
-      ggtitle(paste("Trimmed Read Qualities for ",cell," Rep:",rep, " Pair:",pair)) +
-      ylim(0,42)
-  print(c)
+  trimmed_read_qualities <- read.table(paste("t_read_qualities_",cell,"-",rep,"-",pair,".txt",sep=""), sep="\t", header=FALSE)
+  names(trimmed_read_qualities) <- c("base","mean","lower","upper","10%", "90%")
+  trimmed_read_qualities_melt <- melt(trimmed_read_qualities, id="base")  # convert to long format
+  trimmed_read_qualities_melt$sample <- paste(cell,"-",rep,"-",pair,sep="")
+  sum_trimmed_read_quals <- rbind(sum_trimmed_read_quals, trimmed_read_qualities_melt)
 }
+mean_trimed_read_quals <- ddply(sum_trimmed_read_quals, .(base,variable), numcolwise(mean)) 
+ggplot(data=mean_trimed_read_quals, aes(x=base, y=value, colour=variable)) +
+      geom_line() + 
+      ggtitle("Trimmed Read Qualities") +
+      ylim(0,42)
+
 ```
 
 Transcripts per million expression data
 
-```{r tpm_corr, fig.width=12, fig.height=12}
+```{r tpm_corr, fig.width=10, fig.height=10}
 # load express outputs
 
 library(reshape2)
@@ -161,7 +173,7 @@ ggplot(data=melted, aes_string(x=names(melted)[1], y=names(melted)[2], fill="val
 
 Effective Count expression data
 
-```{r eff_count_corr, fig.width=12, fig.height=12}
+```{r eff_count_corr, fig.width=10, fig.height=10}
 # load express outputs
 
 library(reshape2)
@@ -213,19 +225,18 @@ sizes <- MedianNorm(counts)
 
 conditions <- as.factor(rep(c("BS", "M"),each=3))
 
-ebOut <- EBTest(Data=mat, Conditions=conditions, sizeFactors=sizes, maxround=5)
+ebOut <- EBTest(Data=mat, Conditions=conditions, sizeFactors=sizes, maxround=6)
 
 posteriorProbs <- GetPPMat(ebOut)
 
 probs <- data.frame(posteriorProbs)
-probs$sorghum <- row.names(probs)
-names(probs) <- c("PPEE", "PPDE", "sorghum")
+names(probs) <- c("PPEE", "PPDE")
 
-write.table(anno_probs, "ppde_sorghum_mrna.csv", sep="\t",quote=F,row.names=F)
+write.table(probs, "ppde_sorghum_mrna.csv", sep="\t",quote=F,row.names=T)
 ```
 
-MDH
-```{r}
+
+```{r exp_bars, fig.width=8, fig.height=8}
 # checking out a list of key sorghum genes
 # plot bar charts of tpm with standard error bars
 
@@ -233,115 +244,65 @@ library(plyr)
 stderr <- function(vector) {
   sd(vector)/sqrt(length(vector))
 }
+setwd("~/hydrogen/sorghum/mrna")
+#load key
+key <- read.table("key_sorghum.txt", sep="\t", header=FALSE)
+names(key) <- c("gene", "desc")
 
-key <- read.table("key_sorghum.txt",header=F, sep="\t")
-names(key) <- c("ID", "desc")
-head(tpm_data)
-mdh <- tpm_data[which(row.names(tpm_data)=="Sb07g023920.1"),]
-mdh_melt <- melt(mdh)
-mdh_melt$cell <- gsub(mdh_melt$variable, pattern="-[0-9]", replacement="")
+for (i in 1:nrow(key)) {
+  gene <- tpm_data[which(row.names(tpm_data)==key[i,1]),]
+  gene$name <- row.names(gene)
+  gene_melt <- melt(gene, id="name")
+  gene_melt$cell <- gsub(gene_melt$variable, pattern="-[0-9]", replacement="")
   
-tpm <- ddply(mdh_melt, .(cell), numcolwise(mean))        # sum columns, grouping by annotation
-tpm[which(tpm$cell=="BS"),"stderr"]<-stderr(mdh_melt[which(mdh_melt$cell=="BS"),]$value) # set cell [bs,stderr]
-tpm[which(tpm$cell=="M"),"stderr"]<-stderr(mdh_melt[which(mdh_melt$cell=="M"),]$value)
-
-ggplot(data=tpm, aes(x=cell, y=value, fill=cell)) +
-  geom_bar(stat="identity") +
-  ggtitle("Expression of NADP-MDH") +
-  #geom_text(aes(label=sum_count, y=sum_count+500000)) +
-  labs(x = "Cell") +
-  geom_errorbar(aes(ymax=value+stderr,ymin=value-stderr))
-
-```
-
-OMT
-```{r}
-# checking out a list of key sorghum genes
-# plot bar charts of tpm with standard error bars
-
-library(plyr)
-stderr <- function(vector) {
-  sd(vector)/sqrt(length(vector))
+  tpm <- ddply(gene_melt, .(cell), numcolwise(mean))        # sum columns, grouping by annotation
+  tpm[which(tpm$cell=="BS"),"stderr"] <- stderr(gene_melt[which(gene_melt$cell=="BS"),]$value) # set cell [bs,stderr]
+  tpm[which(tpm$cell=="M"),"stderr"]  <- stderr(gene_melt[which(gene_melt$cell=="M"),]$value)
+  
+  g1<-ggplot(data=tpm, aes(x=cell, y=value, fill=cell)) +
+    geom_bar(stat="identity") +
+    ggtitle(paste("Expression of ", key[i,2], " (", key[i,1], ")", sep="")) +
+    labs(x = "Cell") +
+    geom_errorbar(aes(ymax=value+stderr,ymin=value-stderr))
+  print(g1)
 }
 
-key <- read.table("key_sorghum.txt",header=F, sep="\t")
-names(key) <- c("ID", "desc")
-head(tpm_data)
-omt <- tpm_data[which(row.names(tpm_data)=="Sb08g016630.1"),] 
-omt_melt <- melt(omt)
-omt_melt$cell <- gsub(omt_melt$variable, pattern="-[0-9]", replacement="")
-  
-tpm <- ddply(omt_melt, .(cell), numcolwise(mean))        # sum columns, grouping by annotation
-tpm[which(tpm$cell=="BS"),"stderr"]<-stderr(omt_melt[which(omt_melt$cell=="BS"),]$value)
-tpm[which(tpm$cell=="M"),"stderr"]<-stderr(omt_melt[which(omt_melt$cell=="M"),]$value)
-
-ggplot(data=tpm, aes(x=cell, y=value, fill=cell)) +
-  geom_bar(stat="identity") +
-  ggtitle("Expression of OMT") +
-  #geom_text(aes(label=sum_count, y=sum_count+500000)) +
-  labs(x = "Cell") +
-  geom_errorbar(aes(ymax=value+stderr,ymin=value-stderr))
-
 ```
 
-PEPC
+
+Log Fold Changes
 
 ```{r}
-# checking out a list of key sorghum genes
-# plot bar charts of tpm with standard error bars
+tpm_data$logfc = (tpm_data[,"M-1"]+tpm_data[,"M-2"]+tpm_data[,"M-3"])/(tpm_data[,"BS-1"]+tpm_data[,"BS-2"]+tpm_data[,"BS-3"])
+tpm_data$logfc = log(tpm_data$logfc)
 
-library(plyr)
-stderr <- function(vector) {
-  sd(vector)/sqrt(length(vector))
-}
+tpm_data_PPDE<-merge(x=tpm_data, y=probs, by="row.names")
 
-key <- read.table("key_sorghum.txt",header=F, sep="\t")
-names(key) <- c("ID", "desc")
-head(tpm_data)
-pepc <- tpm_data[which(row.names(tpm_data)=="Sb10g021330.1"),]
-pepc_melt <- melt(pepc)
-pepc_melt$cell <- gsub(pepc_melt$variable, pattern="-[0-9]", replacement="")
-  
-tpm <- ddply(pepc_melt, .(cell), numcolwise(mean))        # sum columns, grouping by annotation
-tpm[which(tpm$cell=="BS"),"stderr"]<-stderr(pepc_melt[which(pepc_melt$cell=="BS"),]$value)
-tpm[which(tpm$cell=="M"),"stderr"]<-stderr(pepc_melt[which(pepc_melt$cell=="M"),]$value)
+DE_tpm_data <- tpm_data_PPDE[which(tpm_data_PPDE$PPDE>0.95),]
+DE_tpm_data <- DE_tpm_data[-which(is.infinite(DE_tpm_data$logfc)),]
 
-ggplot(data=tpm, aes(x=cell, y=value, fill=cell)) +
-  geom_bar(stat="identity") +
-  ggtitle("Expression of PEPC") +
-  #geom_text(aes(label=sum_count, y=sum_count+500000)) +
-  labs(x = "Cell") +
-  geom_errorbar(aes(ymax=value+stderr,ymin=value-stderr))
+DE_tpm_data <- DE_tpm_data[order(-DE_tpm_data$logfc),] 
+
+M_tpm_data <- DE_tpm_data[which(DE_tpm_data$logfc>=2),] # M
+
+DE_tpm_data <- DE_tpm_data[order(DE_tpm_data$logfc),] # resort
+BS_tpm_data <- DE_tpm_data[which(DE_tpm_data$logfc<=-2),] # BS
+
+# head(M_tpm_data)
+# head(BS_tpm_data)
+
+write.table(M_tpm_data, "tpm_data.m.csv", sep="\t",quote=F,row.names=F)
+write.table(BS_tpm_data, "tpm_data.bs.csv", sep="\t",quote=F,row.names=F)
 
 ```
-
-PPDK
 
 ```{r}
-# checking out a list of key sorghum genes
-# plot bar charts of tpm with standard error bars
-
-library(plyr)
-stderr <- function(vector) {
-  sd(vector)/sqrt(length(vector))
-}
-
-key <- read.table("key_sorghum.txt",header=F, sep="\t")
-names(key) <- c("ID", "desc")
-head(tpm_data)
-ppdk <- tpm_data[which(row.names(tpm_data)=="Sb09g019930.1"),]
-ppdk_melt <- melt(ppdk)
-ppdk_melt$cell <- gsub(ppdk_melt$variable, pattern="-[0-9]", replacement="")
-  
-tpm <- ddply(ppdk_melt, .(cell), numcolwise(mean))        # sum columns, grouping by annotation
-tpm[which(tpm$cell=="BS"),"stderr"]<-stderr(ppdk_melt[which(ppdk_melt$cell=="BS"),]$value)
-tpm[which(tpm$cell=="M"),"stderr"]<-stderr(ppdk_melt[which(ppdk_melt$cell=="M"),]$value)
-
-ggplot(data=tpm, aes(x=cell, y=value, fill=cell)) +
-  geom_bar(stat="identity") +
-  ggtitle("Expression of PPDK") +
-  #geom_text(aes(label=sum_count, y=sum_count+500000)) +
-  labs(x = "Cell") +
-  geom_errorbar(aes(ymax=value+stderr,ymin=value-stderr))
+# wiggle plots
 
 ```
+
+
+
+
+
+

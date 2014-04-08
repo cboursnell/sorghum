@@ -20,13 +20,33 @@ opts = Trollop::options do
 
   author: Chris Boursnell (cmb211@cam.ac.uk)
   EOS
-  opt :input, "Input file describing fastq files", :type => String
+  opt :input, "Input file describing fastq files", :required => true, :type => String
   opt :reference, "Reference fasta file", :required => :true, :type => String
+  opt :annotation, "Reference annotation gff file", :required => :true, :type => String
   opt :morehelp, "More help"
   opt :verbose, "Be verbose"
+  opt :test, "Don't actually do anything"
 end
 
-Trollop::die :input, "must exist" if !File.exist?(opts[:input]) if (opts[:input] or !opts[:morehelp])
+Trollop::die :input, "must exist" if !File.exists?(opts[:input]) if (opts[:input] or !opts[:morehelp])
+Trollop::die :reference, "must exist" if !File.exists?(opts[:reference]) if (opts[:reference] or !opts[:morehelp])
+Trollop::die :annotation, "must exist" if !File.exists?(opts[:annotation]) if (opts[:annotation] or !opts[:morehelp])
+
+class Feature
+  attr_accessor :name, :type, :features, :start, :stop
+
+  def initialize(name, type,start,stop)
+    @name = name
+    @type = type
+    @features = []
+    @start = start
+    @stop= stop
+  end
+
+  def to_s
+    "#{name}\t#{type}\t#{start}\t#{stop}"
+  end
+end
 
 def parse_fastqc_data(path) #rds
   data = {}
@@ -109,7 +129,7 @@ fastqc_path = "/applications/fastqc_v0.10.1/FastQC/fastqc"
 
 ## # # # # # # # # # # # # # # # # # #
 ## Open input file and store contents
-
+puts "opening input file" if opts.verbose
 input = []
 File.open("#{opts.input}").each_line do |line|
   cols = line.chomp.split(",")
@@ -128,7 +148,7 @@ if !File.exists?("adapter_list.txt")
     minion = "minion search-adapter -do #{hash[:len]-1} -i #{hash[:file]} > adapters_#{hash[:cell]}-#{hash[:rep]}.txt"
     puts minion
     adapter_list << "adapters_#{hash[:cell]}-#{hash[:rep]}.txt"
-    `#{minion}`
+    `#{minion}` if !opts.test
   end
   File.open("adapter_list.txt", "w") {|io| io.write(adapter_list.join("\n"))}
 else
@@ -149,13 +169,14 @@ if !Dir.exists?("fastqc_output")
   puts fastqc
   puts "Running fastqc" if opts.verbose
   `mkdir fastqc_output`
-  `#{fastqc}`
+  `#{fastqc}` if !opts.test
 else
   puts "fastqc already run on raw reads"
 end
 
 input.each_with_index do |hash,index|
   if Dir.exists?("fastqc_output/#{File.basename(hash[:file])}_fastqc")
+    puts "parsing data for #{hash[:file]}"
     data = parse_fastqc_data("fastqc_output/#{File.basename(hash[:file])}_fastqc/fastqc_data.txt")
     name = data["Basic Statistics"]["Filename"]
     input[index][:count] = data["Basic Statistics"]["Total Sequences"].to_i
@@ -167,6 +188,8 @@ input.each_with_index do |hash,index|
         input[index][:over] << hash2["Sequence"]
       end
     end
+  else
+    puts "can't find fastqc directory for #{File.basename(hash[:file])}_fastqc"
   end
 end
 # {"Basic Statistics"=>{"Filename"=>"BS-1b-1.fq", "File type"=>"Conventional base calls", 
@@ -180,7 +203,7 @@ name = "raw_read_counts.txt"
 if !File.exists?("#{name}") and !File.zero?("#{name}")
   File.open("#{name}", "w") do |io|
     input.each do |hash|
-      io.write "#{hash[:count]}\t#{hash[:cell]}\t#{hash[:rep]}\n"
+      io.write "#{hash[:count]}\t#{hash[:cell]}\t#{hash[:rep]}\n"  if !opts.test
     end
   end
 else
@@ -198,14 +221,14 @@ if !File.exists?("#{adapter_file}") and !File.zero?("#{adapter_file}")
     input.each_with_index do |hash,index|
       File.open("adapters_#{hash[:cell]}-#{hash[:rep]}.txt").each_line do |line|
         if line.match(/sequence=([ACGT]+)/)
-          adapter_out.write ">adapter#{count}\n"
-          adapter_out.write "#{$1}\n"
+          adapter_out.write ">adapter#{count}\n"  if !opts.test
+          adapter_out.write "#{$1}\n"  if !opts.test
           count+=1
         end
       end
       hash[:over].each do |seq|
-        adapter_out.write ">adapter#{count}\n"
-        adapter_out.write "#{seq}\n"
+        adapter_out.write ">adapter#{count}\n"  if !opts.test
+        adapter_out.write "#{seq}\n"  if !opts.test
         count+=1
       end
     end
@@ -260,8 +283,8 @@ if run_trimmomatic
     trimmed << outfile
     input[index][:trimmed_t] = outfile
     if !File.exists?("#{outfile}")
-      puts trim_cmd
-      `#{trim_cmd}`
+      puts trim_cmd if opts.verbose
+      `#{trim_cmd}`  if !opts.test
     else
       puts "#{outfile} already created with trimmomatic"
     end
@@ -281,47 +304,12 @@ input.each_with_index do |hash,index|
   trimmed << outfile
   input[index][:trimmed_m] = outfile
   if !File.exists?("#{outfile}")
-    puts mcf
-    `#{mcf}` 
+    puts mcf if opts.verbose
+    `#{mcf}`  if !opts.test
   else
     puts "#{outfile} already created with fastq-mcf"
   end
 end
-# usage: fastq-mcf [options] <adapters.fa> <reads.fq> [mates1.fq ...] 
-
-# Detects levels of adapter presence, computes likelihoods and
-# locations (start, end) of the adapters.   Removes the adapter
-# sequences from the fastq file(s).
-
-# Stats go to stderr, unless -o is specified.
-
-# Specify -0 to turn off all default settings
-
-# If you specify multiple 'paired-end' inputs, then a -o option is
-# required for each.  IE: -o read1.clip.q -o read2.clip.fq
-
-# Options:
-#     -h       This help
-#     -o FIL   Output file (stats to stdout)
-#     -s N.N   Log scale for adapter minimum-length-match (2.2)
-#     -t N     % occurance threshold before adapter clipping (0.25)
-#     -m N     Minimum clip length, overrides scaled auto (1)
-#     -p N     Maximum adapter difference percentage (10)
-#     -l N     Minimum remaining sequence length (19)
-#     -L N     Maximum remaining sequence length (none)
-#     -D N     Remove duplicate reads : Read_1 has an identical N bases (0)
-#     -k N     sKew percentage-less-than causing cycle removal (2)
-#     -x N     'N' (Bad read) percentage causing cycle removal (20)
-#     -q N     quality threshold causing base removal (10)
-#     -w N     window-size for quality trimming (1)
-#     -0       Set all default parameters to zero/do nothing
-#     -U|u     Force disable/enable Illumina PF filtering (auto)
-#     -P N     Phred-scale (auto)
-#     -R       Don't remove N's from the fronts/ends of reads
-#     -n       Don't clip, just output what would be done
-#     -C N     Number of reads to use for subsampling (300k)
-#     -S       Save all discarded reads to '.skip' files
-#     -d       Output lots of random debugging stuff
 
 ## # # # # # # # # # # # # # # # # # #
 ## Run fastqc on all trimmed files
@@ -336,8 +324,8 @@ if !Dir.exists?("trimmed_fastqc_output")
   fastqc = "#{fastqc_path} --kmers 7 --threads #{input.length} --outdir trimmed_fastqc_output #{files}"
   puts fastqc
   puts "Running fastqc" if opts.verbose
-  `mkdir trimmed_fastqc_output`
-  `#{fastqc}`
+  `mkdir trimmed_fastqc_output`  if !opts.test
+  `#{fastqc}`  if !opts.test
 else
   puts "fastqc already run on trimmed reads"
 end
@@ -365,8 +353,8 @@ input.each_with_index do |hash,index|
     end
   end
 end
-File.open("t_read_counts.txt", "w") {|io| io.write(t_counts)} if !File.exists?("t_read_counts.txt")
-File.open("mcf_read_counts.txt", "w") {|io| io.write(mcf_counts)}  if !File.exists?("mcf_read_counts.txt")
+File.open("t_read_counts.txt", "w") {|io| io.write(t_counts)} if !File.exists?("t_read_counts.txt")  if !opts.test
+File.open("mcf_read_counts.txt", "w") {|io| io.write(mcf_counts)}  if !File.exists?("mcf_read_counts.txt")  if !opts.test
 
 ## # # # # # # # # # # # # # # # # # #
 ## Read lengths after trimming
@@ -395,14 +383,14 @@ input.each_with_index do |hash, index|
 end
 
 ## # # # # # # # # # # # # # # # # # #
-## Run bowtie2 to align the reads to the genome
+## Run bowtie to align the reads to the genome
 ##
 
 index = File.basename(opts.reference).split(".")[0..-2].join(".")
 build = "bowtie-build #{opts.reference} #{index}"
 if !File.exists?("#{index}.1.ebwt")
   puts build if opts.verbose
-  `#{build}`
+  `#{build}` if !opts.test
 else
   puts "Index #{index} already exists"
 end
@@ -413,7 +401,8 @@ input.each_with_index do |hash, i|
   bowtie_cmd = "bowtie "
   bowtie_cmd += " --phred64-quals " # illumina 1.5 == phred64
   bowtie_cmd += " -v 0 " # exact matches only
-  bowtie_cmd += " --best "
+  bowtie_cmd += " --best " # eliminates strand bias
+  #bowtie_cmd += " -k 50 " # should i use -k or -a or neither
   bowtie_cmd += " -t -p #{threads} "
   bowtie_cmd += " #{index} "
   bowtie_cmd += " #{hash[:trimmed_t]}"
@@ -467,8 +456,42 @@ sam_files = ""
 input.each do |hash|
   sam_files << "#{hash[:sam]} "
 end
-loci = "ruby find_loci2.rb --input #{sam_files} --output srna_expression.txt"
-puts loci if opts.verbose
+loci = "ruby find_loci.rb --input #{sam_files} --output srna_expression.txt"
+
 if !File.exists?("srna_expression.txt")
+  puts loci if opts.verbose
   `#{loci}` if !opts.test
+else
+  puts "find_loci already run" if opts.verbose
+end
+
+if !File.exists?("srna_locations.txt")
+  cmd = "ruby loci.rb --srna srna_expression.txt --annotation #{opts.annotation} --output srna_locations.txt"
+  puts cmd if opts.verbose
+  `#{cmd}` if !opts.test
+else
+  puts "loci.rb already run" if opts.verbose
+end
+
+## run bowtie again but with more numbers
+
+threads = 22
+input.each_with_index do |hash, i|
+  sam = "#{hash[:cell]}-#{hash[:rep]}-k.sam"
+  bowtie_cmd = "bowtie "
+  bowtie_cmd += " --phred64-quals " # illumina 1.5 == phred64
+  bowtie_cmd += " -v 0 " # exact matches only
+  bowtie_cmd += " --best " # eliminates strand bias
+  bowtie_cmd += " -k 50 " 
+  bowtie_cmd += " -t -p #{threads} "
+  bowtie_cmd += " #{index} "
+  bowtie_cmd += " #{hash[:trimmed_t]}"
+  bowtie_cmd += " #{sam}"
+  input[i][:sam] = sam
+  puts bowtie_cmd if opts.verbose
+  if !File.exists?("#{sam}") 
+    `#{bowtie_cmd}` if !opts.test
+  else
+    puts "bowtie already run for #{sam}"
+  end
 end

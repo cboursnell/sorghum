@@ -150,18 +150,7 @@ File.open("merged.sam").each_line do |line|
 end
 puts "Done"
 
-#loci.each do |locus|
-#  puts locus
-#end
 
-
-# loci.each do |locus|
-#   puts "#{locus.chromosome}\t#{locus.start}\t#{locus.stop}\t#{locus.count}"
-# end
-
-# puts "list.size = #{list.size}"
-
-# puts "loci.size = #{loci.size}"
 loci_list=[]
 list.each_with_index do |sam, sample_number|
   index=0 # current position in the loci list

@@ -161,185 +161,72 @@ ggplot(sam_sizes, aes(x=paste(cell,rep), y=size, fill=cell)) +
   geom_text(aes(label=size, y=size+400000)) +
   labs(x = "Cell and rep") +
   ylim(0,30000000)
-ggsave("bowtie-align.pdf")
 ```
 
 ### sRNA Expression
 
 Correlation plot
 
-```{r correlation, fig.width=10, fig.height=6}
+```{r correlation, fig.width=10, fig.height=8}
 setwd("~/hydrogen/sorghum")
 loci <- read.table("srna_expression.txt", header=F, sep="\t")
 names(loci) <- c("chromosome", "start", "stop", "BS-1", "BS-2", "BS-3", "M-1", "M-2", "M-3")
 counts <- loci[,c(4,5,6,7,8,9)]
-# set rownames here?
+
 
 correlation <- cor(counts)
 # correlation <- cor(counts, method="spearman")
 
 melted <- melt(correlation)
+melted$colour[melted$value<0.7] <- "white"
+melted$colour[melted$value>=0.7] <- "black"
 #melted <- melted[-which(melted$value==1),] # remove 1s so the gradient is better
 ggplot(data=melted, aes_string(x=names(melted)[1], y=names(melted)[2], fill="value")) +
   geom_tile() +
   ggtitle("sRNA Count Correlation Matrix") +
-  geom_text(aes(label = round(value, 2))) +
+  geom_text(colour=melted$colour, aes(label = round(value, 3))) +
   xlab('') +
   ylab('')
-ggsave("pearson.pdf")
 ```
 
 Ranked Correlation plot
 
-```{r spearman, fig.width=10, fig.height=6}
+```{r spearman, fig.width=10, fig.height=8}
 correlation <- cor(counts, method="spearman")
 melted <- melt(correlation)
+melted$colour[melted$value<0.22] <- "white"
+melted$colour[melted$value>=0.22] <- "black"
 melted <- melted[-which(melted$value==1),] # remove 1s so the gradient is better
 
 ggplot(data=melted, aes_string(x=names(melted)[1], y=names(melted)[2], fill="value")) +
   geom_tile() +
   ggtitle("sRNA Count Spearman Correlation Matrix") +
-  geom_text(aes(label = round(value, 2))) +
+  geom_text(colour=melted$colour, aes(label = round(value, 2))) +
   xlab('') +
   ylab('')
-ggsave("spearman.pdf")
 ```
 
-Density Plot
+### Differential Expression of Small RNA Loci
 
-```{r density, fig.width=10, fig.height=6}
-# count_melt <- melt(counts)
-# count_melt$value[count_melt$value < 0.01] <- 0
-# count_melt$cell <- gsub(count_melt$variable, pattern="\\-[0-9]", replacement="")
-# 
-# ggplot(count_melt, aes(x=log(value))) +
-#   geom_density() +
-#   ggtitle("Density plot of sRNA loci expression")
-# ggsave("srna_density.pdf")
+```{r de, fig.width=10, fig.height=8}
+library(EBSeq)
+# load the data
+setwd("~/hydrogen/sorghum")
+loci <- read.table("srna_locations.txt", header=F, sep="\t")
+names(loci) <- c("chromosome", "start", "end", "length", "in_mrna", "mrna", "in_cds", "feature", "BS-1", "BS-2", "BS-3", "M-1", "M-2", "M-3")
+counts <- loci[,c(9,10,11,12,13,14)]
+row.names(counts) <- paste(loci$chromosome, loci$start, loci$end, sep="-")
+mat <- as.matrix(counts)
 
-```
+sizes <- MedianNorm(counts)
+conditions <- as.factor(rep(c("BS", "M"),each=3))
+ebOut <- EBTest(Data=mat, Conditions=conditions, sizeFactors=sizes, maxround=6)
 
-Bundle Sheath
 
-```{r fig.width=10, fig.height=6}
-# bs_counts <- read.table("output_BS-1_counts.txt", header=FALSE)
-# names(bs_counts) <- c("name", "count")
-# bs_counts$rep <- paste("rep",1,sep="-")
-# 
-# ggplot(bs_counts, aes(x = log(count))) + geom_histogram(binwidth=0.5) + scale_y_log10()
-```
+posteriorProbs <- GetPPMat(ebOut)
 
-Mesophyll
+probs <- data.frame(posteriorProbs)
+names(probs) <- c("PPEE", "PPDE")
 
-```{r fig.width=10, fig.height=6}
-# m_counts <- read.table("output_M-2_counts.txt", header=FALSE)
-# names(m_counts) <- c("name", "count")
-# m_counts$rep <- paste("rep",2,sep="-")
-# 
-# ggplot(m_counts, aes(x = log(count))) + geom_histogram(binwidth=0.5) + scale_y_log10()
-```
-
-Scatter!
-
-```{r fig.width=10, fig.height=6}
-# bs_1 <- read.table("output_BS-1_counts.txt", header=FALSE)
-# bs_2 <- read.table("output_BS-2_counts.txt", header=FALSE)
-# bs_3 <- read.table("output_BS-3_counts.txt", header=FALSE)
-# mes_1 <- read.table("output_M-1_counts.txt", header=FALSE)
-# mes_2 <- read.table("output_M-2_counts.txt", header=FALSE)
-# mes_3 <- read.table("output_M-3_counts.txt", header=FALSE)
-# names(bs_1) <- c("name", "count")
-# names(bs_2) <- c("name", "count")
-# names(bs_3) <- c("name", "count")
-# names(mes_1) <- c("name", "count")
-# names(mes_2) <- c("name", "count")
-# names(mes_3) <- c("name", "count")
-# 
-# bs_1 <- normalise(bs_1)
-# bs_2 <- normalise(bs_2)
-# bs_3 <- normalise(bs_3)
-# mes_1 <- normalise(mes_1)
-# mes_2 <- normalise(mes_2)
-# mes_3 <- normalise(mes_3)
-```
-
-Compare Rep 1 and 2 in Bundle Sheath
-
-```{r fig.width=10, fig.height=6}
-# both <- merge(bs_1, bs_2, by.x = "name", by.y = "name")
-# 
-# names(both) <- c("name", "BS", "M")
-# 
-# ggplot(both, aes(x = log(BS), y = log(M))) + geom_point(size = 0.1) + ggtitle("Bundle Sheath - Rep 1 and 2")
-
-```
-
-Compare Rep 2 and 3 in Mesophyll
-
-```{r fig.width=10, fig.height=6}
-# both <- merge(mes_2, mes_3, by.x = "name", by.y = "name")
-# 
-# names(both) <- c("name", "BS", "M")
-# 
-# ggplot(both, aes(x = log(BS), y = log(M))) + geom_point(size = 0.1) + ggtitle("Mesophyll - Rep 2 and 3")
-
-```
-
-Compare Rep 2 and 3 in Bundle Sheath
-
-```{r fig.width=10, fig.height=6}
-# both <- merge(bs_2, bs_3, by.x = "name", by.y = "name")
-# 
-# names(both) <- c("name", "BS", "M")
-# 
-# ggplot(both, aes(x = log(BS), y = log(M))) + geom_point(size = 0.1) + ggtitle("Bundle Sheath - Rep 2 and 3")
-
-```
-
-Compare Rep 1 and 2 in Mesophyll
-
-```{r fig.width=10, fig.height=6}
-# both <- merge(bs_3, mes_1, by.x = "name", by.y = "name")
-# 
-# names(both) <- c("name", "BS", "M")
-# 
-# ggplot(both, aes(x = log(BS), y = log(M))) + geom_point(size = 0.1) + ggtitle("Bundle Sheath 3 - Mesophyll Rep 1")
-# 
-```
-
-Compare Rep 1 of Bundle Sheath and 2 in Mesophyll
-
-```{r fig.width=10, fig.height=6}
-# both <- merge(bs_1, mes_2, by.x = "name", by.y = "name")
-# 
-# names(both) <- c("name", "BS", "M")
-# 
-# ggplot(both, aes(x = log(BS), y = log(M))) + geom_point(size = 0.1) + ggtitle("Bundle Sheath rep 1 and Mesophyll rep 2")
-# 
-```
-
-Correlation Plot
-
-```{r fig.width=10, fig.height=6}
-# library("reshape2")
-# 
-# a <- merge(bs_1, bs_2, by="name")
-# bs_all <- merge(a, bs_3, by="name")
-# 
-# b <- merge(mes_1, mes_2, by="name")
-# mes_all <- merge(b, mes_3, by="name")
-# 
-# bs_m <- merge(bs_all, mes_all, by="name")
-# names(bs_m) <- c("names", "bs_1", "bs_2", "bs_3", "m_1", "m_2", "m_3")
-# 
-# bs_m_c <- cor(bs_m[,2:7])
-# 
-# melted <- melt(bs_m_c)
-# 
-# p <- ggplot(data = melted, aes_string(x = names(melted)[1], y = names(melted)[2], fill = "value")) + 
-#   geom_tile() + 
-#   geom_text(aes(label = round(value, 4))) + xlab("") + ylab("") +
-#   ggtitle("Expression Correlation")
-# p
-# 
+write.table(probs, "ppde_sorghum_srna.csv", sep="\t",quote=F,row.names=T)
 ```

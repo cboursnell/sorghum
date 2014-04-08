@@ -22,6 +22,7 @@ opts = Trollop::options do
   opt :reference, "Reference fasta file", :required => true, :type => String
   opt :genome, "Reference is a genome"
   opt :transcriptome, "Reference is a transcriptome"
+  opt :annotation, "gff file", :type => String
   opt :threads, "Number of threads", :default => 22, :type => :int
   opt :morehelp, "More help"
   opt :verbose, "Be verbose"
@@ -386,6 +387,8 @@ if !File.exists?("#{index}.1.bt2")
   build = "bowtie2-build #{reference} #{index}"
   puts build if opts.verbose
   `#{build}`  if !opts.test
+else
+  puts "bowtie2 index already exists" if opts.verbose
 end
 
 #bowtie2 align reads to transcriptome
@@ -431,3 +434,87 @@ input.each_with_index.each_slice(2) do |(a,i),(b,j)|
   end
 end
 
+# maybe do it just by parsing the sam file in ruby
+# and just load the genes that we're interested in
+# and then export a file for each gene/transcript
+# with a list of the number of 
+
+### construct a list of the important genes
+
+key = Hash.new
+File.open("key_sorghum.txt").each_line do |line|
+  (gene, desc) = line.chomp.split("\t")
+  key[gene] = desc
+end
+
+# p key
+
+# a cigar string of 21M1D79M means add a gap to the read, or delete from the reference
+# so 21M1I77M would mean add a gap to the reference.
+# the total coverage of the read over the reference is the sum of M - I + D
+
+### adapt this code to parse the eXpress output sam files and save the output with decimal coverage based on probabilities in XP:f:[0-9]+
+input.each_with_index.each_slice(2) do |(a,i),(b,j)|
+  count=0
+  # sam = "transcriptome/#{a[:sam]}"
+  sam = "express_#{a[:cell]}-#{a[:rep]}/hits.1.prob.sam"
+  cell = "#{a[:cell]}_#{a[:rep]}"
+  out = "#{cell}.mpileup"
+  if !File.exists?("#{out}")
+    puts "scanning #{sam}..."
+    coverage = Hash.new
+    File.open("#{sam}").each_line do |line|
+      if line[0] != '@'
+        count+=1
+        print "." if count%10_000==0
+        cols = line.chomp.split("\t")
+        pos = cols[3].to_i
+        gene = cols[2]
+        align=0
+        if line.match(/XP:f:(\S+)/)
+          prob = $1.to_f
+          cols[5].scan(/([0-9]+)([DIM])/).each do |a|
+            count = a[0].to_i
+            letter = a[1]
+            align += count if letter=="M" or letter=="D"
+            align -= count if letter=="I"
+          end
+          coverage[gene] = [] if !coverage.has_key?(gene)
+          (pos..(pos+align)).each do |i|
+            coverage[gene][i] = 0 if !coverage[gene][i]
+            coverage[gene][i] += prob
+          end
+        end
+      end
+    end
+    ### save output
+    puts "saving output from #{sam}" if opts.verbose
+    File.open("#{out}", "w") do |out|
+      coverage.each_key do |gene|
+        coverage[gene].each_with_index do |cov, index|
+          cov=0 if !cov
+          out.write "#{gene}\t#{index}\t#{cov}\n" if index>0
+        end
+      end
+    end
+  else
+    puts "#{out} already exists" if opts.verbose
+  end
+  input[i][:coverage] = out
+  input[j][:coverage] = out
+  puts "...Done" if opts.verbose
+end
+
+### add introns into depth file
+
+input.each_with_index.each_slice(2) do |(a,i),(b,j)|
+  depth = a[:coverage]
+  out = "#{a[:cell]}_#{a[:rep]}.coverage"
+  introns = "ruby ~/scripts/depth/lib/depth.rb --depth #{depth} --annotation #{opts.annotation} --output #{out}"
+  if !File.exists?("#{out}")
+    puts introns if opts.verbose
+    `#{introns}` if !opts.test
+  else
+    puts "#{out} already exists"
+  end
+end

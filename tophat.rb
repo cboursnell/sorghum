@@ -18,6 +18,7 @@ opts = Trollop::options do
   opt :left, "First fastq files (comma separated list)", :required => true, :type => String
   opt :right, "Second fastq files (comma separated list)", :required => true, :type => String
   opt :genome, "Reference fasta file", :required => true, :type => String
+  opt :existing_gff, "Validate an existing gff file", :type => String
   opt :outputdir, "Output directory", :required => true, :type => String
   opt :threads, "Number of threads", :default => 1, :type => :int
   opt :verbose, "Be verbose"
@@ -29,7 +30,9 @@ Trollop::die :genome, "must exist" if !File.exist?(opts[:genome]) if opts[:genom
 # # # # # # # # # # # # # # #
 # run tophat
 
-tophat_path = "/home/cmb211/apps/tophat/tophat2"
+# tophat_path = "/home/cmb211/apps/tophat/tophat2"
+tophat_path = `which tophat2`.chomp
+abort "Can't find tophat2. Please make sure it is in your PATH" if tophat_path==""
 
 left = opts.left.split(",")
 right = opts.right.split(",")
@@ -55,11 +58,13 @@ end
 tophat_cmd = "#{tophat_path}"
 tophat_cmd += " -o #{opts.outputdir} " # options
 tophat_cmd += " -p #{opts.threads} " # options
+# tophat_cmd += " --mate-inner-dist 50 " # default:50, distance between end of 
 tophat_cmd += " --phred64-quals "  #
 tophat_cmd += " --tmp-dir /tmp/cmb211 " if `hostname`.split(".").first == "node8"
 tophat_cmd += " --tmp-dir /disk2/tmp/cmb211 " if `hostname`.split(".").first == "node9"
 tophat_cmd += " --no-convert-bam "  # Output is <output_dir>/accepted_hit.sam)
 tophat_cmd += " --b2-very-sensitive "
+tophat_cmd += " -G #{opts.existing_gff} "
 tophat_cmd += " #{index} "
 tophat_cmd += " #{left.join(",")} "
 tophat_cmd += " #{right.join(",")} "
@@ -73,9 +78,10 @@ end
 
 ## cufflinks?
 
-cufflinks = "/home/cmb211/apps/cufflinks/cufflinks"
+cufflinks_path = `which cufflinks`.chomp
+abort "Can't find cufflinks. Please make sure it is in your PATH" if cufflinks_path==""
 
-cufflinks_cmd = "#{cufflinks}"
+cufflinks_cmd = "#{cufflinks_path}"
 cufflinks_cmd += " -o #{opts.outputdir} " 
 cufflinks_cmd += " -p #{opts.threads} "
 cufflinks_cmd += " #{opts.outputdir}/accepted_hits.sam "
@@ -87,7 +93,6 @@ else
   puts "Cufflinks already run"
 end
 
-
 # Extracting transcript sequences
 # The gffread utility can be used to generate a FASTA file with the DNA 
 # sequences for all transcripts in a GFF file. For this operation a fasta
@@ -96,9 +101,10 @@ end
 #   a Cufflinks assembly session. This can be accomplished with a command
 #    line like this:
 
-gffread = "/home/cmb211/apps/cufflinks/gffread"
+gffread_path = `which gffread`.chomp
+abort "Can't find gffread. Please make sure it is in your PATH" if gffread_path==""
 
-gffcmd = "#{gffread} -w #{opts.outputdir}/#{index}-transcripts.fa -g #{opts.genome} #{opts.outputdir}/transcripts.gtf"
+gffcmd = "#{gffread_path} -w #{opts.outputdir}/#{index}-transcripts.fa -g #{opts.genome} #{opts.outputdir}/transcripts.gtf"
 
 puts gffcmd if opts.verbose
 `#{gffcmd}` if !opts.test
