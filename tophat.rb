@@ -15,8 +15,9 @@ opts = Trollop::options do
 
   author: Chris Boursnell (cmb211@cam.ac.uk)
   EOS
-  opt :left, "First fastq files (comma separated list)", :required => true, :type => String
-  opt :right, "Second fastq files (comma separated list)", :required => true, :type => String
+  opt :input, "Input file of fastq files, alternating left then right", :type => String
+  opt :left, "First fastq files (comma separated list)", :type => String
+  opt :right, "Second fastq files (comma separated list)", :type => String
   opt :genome, "Reference fasta file", :required => true, :type => String
   opt :existing_gff, "Validate an existing gff file", :type => String
   opt :outputdir, "Output directory", :required => true, :type => String
@@ -34,14 +35,31 @@ Trollop::die :genome, "must exist" if !File.exist?(opts[:genome]) if opts[:genom
 tophat_path = `which tophat2`.chomp
 abort "Can't find tophat2. Please make sure it is in your PATH" if tophat_path==""
 
-left = opts.left.split(",")
-right = opts.right.split(",")
-if left.length != right.length
-  abort "Please give equal numbers of left and right reads"
+left=[]
+right=[]
+if opts.input
+  count=0
+  File.open("#{opts.input}").each_line do |line|
+    line.chomp!
+    if count%2==0
+      left << line
+    else
+      right << line
+    end
+    count += 1
+  end
+else
+  left = opts.left.split(",")
+  right = opts.right.split(",")
+  if left.length != right.length
+    abort "Please give equal numbers of left and right reads"
+  end
 end
+
 (left+right).each do |file|
   abort "#{file} must exist" if !File.exists?(file)
 end
+
 
 if !Dir.exists?("#{opts.outputdir}")
   mkdir = "mkdir #{opts.outputdir}"
