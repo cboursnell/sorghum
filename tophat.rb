@@ -51,21 +51,23 @@ if opts.input
 else
   left = opts.left.split(",")
   right = opts.right.split(",")
-  if left.length != right.length
-    abort "Please give equal numbers of left and right reads"
-  end
+end
+if left.length != right.length
+  abort "Please give equal numbers of left and right reads"
 end
 
 (left+right).each do |file|
   abort "#{file} must exist" if !File.exists?(file)
 end
 
-
 if !Dir.exists?("#{opts.outputdir}")
   mkdir = "mkdir #{opts.outputdir}"
   `#{mkdir}` if !opts.test
 end
 
+## # # # # # # # # # # # # # # # # # # # #
+## build bowtie index
+##
 index = "#{File.basename(opts.genome).split(".")[0..-2].join(".")}" 
 if !File.exists?("#{index}.1.bt2")
   build = "/home/cmb211/apps/bowtie2/bowtie2-build #{opts.genome} #{index}"
@@ -73,6 +75,10 @@ if !File.exists?("#{index}.1.bt2")
   `#{build}` if !opts.test
 end
 
+## # # # # # # # # # # # # # # # # # # # #
+## construct tophat cmd to align reads
+## and find splice junctions
+##
 tophat_cmd = "#{tophat_path}"
 tophat_cmd += " -o #{opts.outputdir} " # options
 tophat_cmd += " -p #{opts.threads} " # options
@@ -94,7 +100,10 @@ else
   puts "Tophat2 already run"
 end
 
-## cufflinks?
+## # # # # # # # # # # # # # # # # # # # #
+## run cufflinks to take sam file
+## and produce new output gtf file
+##
 
 cufflinks_path = `which cufflinks`.chomp
 abort "Can't find cufflinks. Please make sure it is in your PATH" if cufflinks_path==""
