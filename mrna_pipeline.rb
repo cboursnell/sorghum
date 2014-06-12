@@ -92,7 +92,7 @@ end
 
 if opts.morehelp
   puts "    The input file format should contain 1 line per input fastq file"
-  puts "    and contain 3 comma separated columns."
+  puts "    and contain 4 comma separated columns."
   puts "    1) The fastq file location (absolute is better than relative)"
   puts "    2) Replicate number"
   puts "    3) Cell type or data type"
@@ -157,7 +157,7 @@ end
 ### export number of reads per file as a table (R)
 
 name = "mrna_raw_read_counts.txt"
-if !File.exists?("#{name}") and !File.zero?("#{name}")
+if !File.exists?("#{name}") or File.size?("#{name}").nil?
   File.open("#{name}", "w") do |io|
     input.each do |hash|
       io.write "#{hash[:count]}\t#{hash[:cell]}\t#{hash[:rep]}\t#{hash[:pair]}\n" if !opts.test
