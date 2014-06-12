@@ -87,20 +87,6 @@ class Loci
     np = negative.to_f/(positive+negative)
     s << "#{pp}\t#{np}\n"
   end
-
-  def to_long_s
-    s = "#{@chromosome}\t#{@start}\t#{@stop}\t#{@de}\t"
-    @counts.each do |c|
-      s << "#{c}\t"
-    end
-    @positive.each do |p|
-      s << "#{p}\t"
-    end
-    @negative.each do |n|
-      s << "#{n}\t"
-    end
-    s << "1\n"
-  end
 end
 
 class Tag
