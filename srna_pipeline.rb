@@ -397,12 +397,12 @@ end
 
 threads = 22
 input.each_with_index do |hash, i|
-  sam = "#{hash[:cell]}-#{hash[:rep]}.sam"
+  sam = "#{hash[:cell]}-#{hash[:rep]}-k.sam"
   bowtie_cmd = "bowtie "
   bowtie_cmd += " --phred64-quals " # illumina 1.5 == phred64
   bowtie_cmd += " -v 0 " # exact matches only
   bowtie_cmd += " --best " # eliminates strand bias
-  #bowtie_cmd += " -k 50 " # should i use -k or -a or neither
+  bowtie_cmd += " -k 50 " 
   bowtie_cmd += " -t -p #{threads} "
   bowtie_cmd += " #{index} "
   bowtie_cmd += " #{hash[:trimmed_t]}"
@@ -422,15 +422,18 @@ end
 ##
 
 puts "calculating sizes of sam files" if opts.verbose
-if !File.exists?("sam_sizes.txt")
-  File.open("sam_sizes.txt", "w") do |io|
+if !File.exists?("sam_sizes-k.txt")
+  File.open("sam_sizes-k.txt", "w") do |io|
     input.each do |hash|
       sam = hash[:sam]
-      wordcount = "wc -l #{sam}"
-      output = `#{wordcount}`
-      puts "output: #{output}" if opts.verbose
-      l = output.split.first.to_i
-      io.write "#{hash[:cell]}\t#{hash[:rep]}\t#{l}\n"
+      linecount = "wc -l #{sam}"
+      puts linecount if opts.verbose
+      if !opts.test
+        output = `#{linecount}` 
+        puts "output: #{output}" if opts.verbose
+        l = output.split.first.to_i
+        io.write "#{hash[:cell]}\t#{hash[:rep]}\t#{l}\n" 
+      end
     end
   end
 end
@@ -438,8 +441,8 @@ end
 ## # # # # # # # # # # # # # # # # # #
 ## sort the sam files
 ##
-input.each do |hash|
-  sorted_sam = "#{hash[:sam].split(".")[0..-2].join(".")}.sort.sam"
+input.each_with_index do |hash, i|
+  sorted_sam = "#{hash[:sam].split(".")[0..-2].join(".")}.sorted.sam"
   sort = "sort -k3,3 -k4,4n #{hash[:sam]} > #{sorted_sam}"
   if !File.exists?("#{sorted_sam}")
     puts sort if opts.verbose
@@ -447,26 +450,30 @@ input.each do |hash|
   else
     puts "#{hash[:sam]} already sorted"
   end
+  input[i][:sorted_sam] = sorted_sam
 end
 
 ## # # # # # # # # # # # # # # # # # #
 ## Find loci
 ##
-sam_files = ""
+sam_files = []
 input.each do |hash|
-  sam_files << "#{hash[:sam]} "
+  sam_files << hash[:sorted_sam]
 end
-loci = "ruby find_loci.rb --input #{sam_files} --output srna_expression.txt"
-
-if !File.exists?("srna_expression.txt")
+find_loci_output = "srna_expression_strand.txt"
+loci = "ruby /home/cmb211/scripts/sorghum/find_loci_strand.rb --input #{sam_files.join(",")} --output #{find_loci_output} "
+loci << " --verbose " if opts.verbose
+if !File.exists?("#{find_loci_output}")
   puts loci if opts.verbose
   `#{loci}` if !opts.test
 else
-  puts "find_loci already run" if opts.verbose
+  puts "find_loci_strand already run" if opts.verbose
 end
 
+abort "stop here to debug"
+
 if !File.exists?("srna_locations.txt")
-  cmd = "ruby loci.rb --srna srna_expression.txt --annotation #{opts.annotation} --output srna_locations.txt"
+  cmd = "ruby loci.rb --srna srna_expression_strand.txt --annotation #{opts.annotation} --output srna_locations.txt"
   puts cmd if opts.verbose
   `#{cmd}` if !opts.test
 else
@@ -475,23 +482,23 @@ end
 
 ## run bowtie again but with more numbers
 
-threads = 22
-input.each_with_index do |hash, i|
-  sam = "#{hash[:cell]}-#{hash[:rep]}-k.sam"
-  bowtie_cmd = "bowtie "
-  bowtie_cmd += " --phred64-quals " # illumina 1.5 == phred64
-  bowtie_cmd += " -v 0 " # exact matches only
-  bowtie_cmd += " --best " # eliminates strand bias
-  bowtie_cmd += " -k 50 " 
-  bowtie_cmd += " -t -p #{threads} "
-  bowtie_cmd += " #{index} "
-  bowtie_cmd += " #{hash[:trimmed_t]}"
-  bowtie_cmd += " #{sam}"
-  input[i][:sam] = sam
-  puts bowtie_cmd if opts.verbose
-  if !File.exists?("#{sam}") 
-    `#{bowtie_cmd}` if !opts.test
-  else
-    puts "bowtie already run for #{sam}"
-  end
-end
+# threads = 22
+# input.each_with_index do |hash, i|
+#   sam = "#{hash[:cell]}-#{hash[:rep]}-k.sam"
+#   bowtie_cmd = "bowtie "
+#   bowtie_cmd += " --phred64-quals " # illumina 1.5 == phred64
+#   bowtie_cmd += " -v 0 " # exact matches only
+#   bowtie_cmd += " --best " # eliminates strand bias
+#   bowtie_cmd += " -k 50 " 
+#   bowtie_cmd += " -t -p #{threads} "
+#   bowtie_cmd += " #{index} "
+#   bowtie_cmd += " #{hash[:trimmed_t]}"
+#   bowtie_cmd += " #{sam}"
+#   input[i][:sam] = sam
+#   puts bowtie_cmd if opts.verbose
+#   if !File.exists?("#{sam}") 
+#     `#{bowtie_cmd}` if !opts.test
+#   else
+#     puts "bowtie already run for #{sam}"
+#   end
+# end
