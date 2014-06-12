@@ -15,7 +15,7 @@ require 'trollop'
 opts = Trollop::options do
   version "v0.1"
   banner <<-EOS
-  find loci
+  find loci stranded
 
   author: Chris Boursnell (cmb211@cam.ac.uk)
   EOS
@@ -29,26 +29,16 @@ opts.input.split(",").each do |file|
 end
 
 def ticker(i,speed)
-  print "." if i % 100 == 0 if speed<1
-  if i % 1000 == 0
-    print "\b"*10 if speed<1
-    print "3" if speed<2
+  n = 10**speed
+  if i <= 1
+    print " "*9
+    print "0"
   end
-  if i % 10000 == 0
-    print "\b"*10 if speed<2
-    print "4"  if speed<3
-  end
-  if i % 100000 == 0
-    print "\b"*10 if speed<3
-    print "5"  if speed<4
-  end
-  if i % 1000000 == 0 
-    print "\b"*10 if speed<4
-    print "6"  if speed<5
-  end
-  if i % 10000000 == 0
-    print "\b"*10 if speed<5
-    print "7" if speed<6
+  if i % n == 0
+    print "\b"*10
+    string = "#{i}"
+    print " "*(10-string.length)
+    print string
   end
 end
 
@@ -110,91 +100,113 @@ end
 # merge the sam files together into one large sorted sam file
 #
 
-# list = opts.input.split(",")
-# merge = "sort -m -k3,3 -k4,4n #{list.join(" ")} > merged.sam"
-# if !File.exists?("merged.sam")
-#   puts "merging sorted sam files"
-#   `#{merge}`
-# else
-#   puts "merged.sam file already exists" if opts.verbose
-# end
+list = opts.input.split(",")
+merged = "merged_stranded.sam"
+merge = "sort -m -k3,3 -k4,4n #{list.join(" ")} > #{merged}"
+if !File.exists?("#{merged}")
+  puts "merging sorted sam files"
+  `#{merge}`
+else
+  puts "#{merged} already exists" if opts.verbose
+end
 
-# current_locus = Locus.new("-1", 0, 1,1)
-# loci = Hash.new
-# line_count=1
-# puts "calculating loci" if opts.verbose
-# File.open("merged.sam").each_line do |line|
-#   ticker(line_count,4)
-#   line_count += 1
-#   cols = line.chomp.split("\t")
-#   chromosome = cols[2]
-#   read = Locus.new(chromosome, cols[3], cols[3].to_i+cols[4].length, list.length)
-#   state = current_locus.overlaps(read)
-#   if state < 5 # overlaps
-#     # if the read in the sam file overlaps the current locus then extend the locus
-#     # and add 1 to the count
-#     if state==1
-#       current_locus.stop = read.stop
-#     elsif state==2
-#       current_locus.start = read.start
-#     elsif state==4
-#       current_locus.start = read.start
-#       current_locus.stop = read.stop
-#     end
-#   else 
-#     # if the read doesn't overlap the current locus then create a new current locus
-#     # based on the read and set the count to 1
-#     current_locus = read
-#     loci[chromosome] = [] if !loci.has_key?(chromosome)
-#     loci[chromosome] << current_locus
-#   end
-# end
-# puts "Done"
+
+current_locus = Locus.new("-1", 0, 1,1)
+loci = Hash.new
+line_count=1
+print "calculating loci..." if opts.verbose
+File.open("#{merged}").each_line do |line|
+  ticker(line_count,5)
+  line_count += 1
+  cols = line.chomp.split("\t")
+  chromosome = cols[2]      #  start    stop                        number of files
+  read = Locus.new(chromosome, cols[3], cols[3].to_i+cols[4].length, list.length)
+  state = current_locus.overlaps(read)
+  if state <= 4 # overlaps
+    # if the read in the sam file overlaps the current locus then extend the locus
+    # and add 1 to the count
+    if state==1
+      current_locus.stop = read.stop
+    elsif state==2
+      current_locus.start = read.start
+    elsif state==4
+      current_locus.start = read.start
+      current_locus.stop = read.stop
+    end
+  else 
+    # if the read doesn't overlap the current locus then create a new current locus
+    # based on the read and set the count to 1
+    current_locus = read
+    loci[chromosome] = [] if !loci.has_key?(chromosome)
+    loci[chromosome] << current_locus
+  end
+end
+puts "Done" if opts.verbose
+
 
 ### load the srna loci from the srna_expression.txt file that
 ### has already been created
 
-loci = Hash.new
-list = opts.input.split(",")
-size = list.length
-print "scanning srna expression" if opts.verbose
-File.open("srna_expression.txt").each_line do |line|
-  cols = line.chomp.split("\t")
-  chromosome = cols[0]
-  start = cols[1]
-  stop = cols[2]
-  loci[chromosome] = [] if !loci.has_key?(chromosome)
-  loci[chromosome] << Locus.new(chromosome, start, stop, size) #   def initialize(chromosome, start, stop, size)
+# loci = Hash.new
+# list = opts.input.split(",")
+# size = list.length
+# count=1
+# print "scanning srna expression" if opts.verbose
+# File.open("srna_expression_head.txt").each_line do |line|
+#   ticker(count,3)
+#   count+=1
+#   cols = line.chomp.split("\t")
+#   chromosome = cols[0]
+#   start = cols[1]
+#   stop = cols[2]
+#   loci[chromosome] = [] if !loci.has_key?(chromosome)
+#   loci[chromosome] << Locus.new(chromosome, start, stop, size) #   def initialize(chromosome, start, stop, size)
+# end
+# puts "Done" if opts.verbose
+
+
+### write the loci has to a file at this point because
+### it's taken so long to generate it
+
+File.open("srna_loci.txt", "w") do |out|
+  loci.each_pair do |chrom, list|
+    list.each do |locus|
+      out.write "#{locus}\n"
+    end
+  end
 end
-puts "Done" if opts.verbose
+
+###
 
 loci_list=[]
 list.each_with_index do |sam, sample_number|
   index=0 # current position in the loci list
-  puts "--- opening sam file #{sam}" if opts.verbose
+  print "opening sam file #{sam}..." if opts.verbose
   count = 1
   current_chromosome = ""
-  File.open("#{sam}").each_line do |line|
-    ticker(count,3)
+  File.open("#{sam}").each_line.with_index do |line, i|
+    ticker(count,5)
     count+=1
     cols = line.chomp.split("\t")
     strand = cols[1]
     chrom = cols[2]
     pos = cols[3]
+    puts "line = #{i}, strand = #{strand}, chrom = #{chrom}, pos = #{pos}"
     if chrom != current_chromosome
       # load new list
-      #puts "previous #{current_chromosome} new #{chrom}" if opts.verbose
+      # puts "previous \"#{current_chromosome}\" new #{chrom}" if opts.verbose
       loci_list = loci[chrom]
       current_chromosome = chrom
       index = 0
+      puts "length of loci_list = #{loci_list.length}"
     end
     if index < loci_list.size
       while index < loci_list.size and !loci_list[index].contains(pos)
         index += 1
-        #puts "something"
+        # puts "index = #{index}, pos = #{pos}, loci_list[index] = #{loci_list[index].start}..#{loci_list[index].stop}"
       end
       if index >= loci_list.size
-        puts "sample=#{sample_number}\tindex=#{index}\tline_in_sam=#{count}" if opts.verbose
+        puts "ERROR 1: sample=#{sample_number}\tindex=#{index}\tline_in_sam=#{count}" if opts.verbose
       else
         if strand == "+"
           loci[chrom][index].pvecount[sample_number] +=1
@@ -203,13 +215,13 @@ list.each_with_index do |sam, sample_number|
         end
       end
     else
-      puts "sample=#{sample_number}\tindex=#{index}\tline_in_sam=#{count}" if opts.verbose
+      puts "ERROR 2: sample=#{sample_number}\tindex=#{index}\tline_in_sam=#{count}" if opts.verbose
     end
   end
-  puts "Done"
+  puts "Done" if opts.verbose
 end
 
-puts "Writing output"
+puts "Writing output #{opts.output}"
 File.open("#{opts.output}", "w") do |out|
   loci.each_pair do |chromosome, locus_list|
     locus_list.each do |locus|
