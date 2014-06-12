@@ -80,6 +80,7 @@ class Loci
     @counts.each do |c|
       s << "#{c}\t"
     end
+    s << "#{@likelihood}\t#{@fdr}\t"
     positive = @positive.compact.reduce(0) {|sum,x| sum += x if !x.nil?}
     negative = @negative.compact.reduce(0) {|sum,x| sum += x if !x.nil?}
     pp = positive.to_f/(positive+negative)
